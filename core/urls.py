@@ -197,7 +197,11 @@ urlpatterns = [
     path('public/kiosk/select/<int:student_id>/', views.kiosk_select_student, name='kiosk_select_student'),
     path('public/kiosk/student/', views.kiosk_student, name='kiosk_student'),
     path('public/kiosk/clear/', views.kiosk_clear, name='kiosk_clear'),
+
+    # System Configuration Engine
+    path('settings/', views.system_settings_view, name='system_settings'),
 ]
+
 
 
 

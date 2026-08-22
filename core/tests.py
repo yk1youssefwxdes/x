@@ -404,4 +404,67 @@ class KioskSearchTestCase(TestCase):
         self.assertRedirects(response, '/public/kiosk/', fetch_redirect_response=False)
 
 
+class SystemSettingsTestCase(TestCase):
+    def setUp(self):
+        from django.contrib.auth.models import User
+        self.admin_user = User.objects.create_superuser('admin_settings', 'admin@example.com', 'password123')
+        self.normal_user = User.objects.create_user('normal_user', 'user@example.com', 'password123')
+
+    def test_get_setting_fallback_and_override(self):
+        from core.utils import get_setting, set_setting
+        # Initial setting seeded in migration or fallback
+        val = get_setting('CURRENCY_SYMBOL', 'DH')
+        self.assertEqual(val, 'DH')
+
+        # Override via set_setting
+        set_setting('CURRENCY_SYMBOL', 'MAD')
+        self.assertEqual(get_setting('CURRENCY_SYMBOL'), 'MAD')
+
+    def test_settings_view_access_control(self):
+        # Anonymous redirect by AdminOnlyMiddleware
+        res = self.client.get('/settings/')
+        self.assertRedirects(res, '/admin/login/', fetch_redirect_response=False)
+
+        # Normal non-staff user access denied by AdminOnlyMiddleware
+        self.client.login(username='normal_user', password='password123')
+        res = self.client.get('/settings/')
+        self.assertRedirects(res, '/admin/login/', fetch_redirect_response=False)
+
+        # Superuser / staff access allowed
+        self.client.login(username='admin_settings', password='password123')
+        res = self.client.get('/settings/')
+        self.assertEqual(res.status_code, 200)
+
+
+    def test_settings_view_post_updates_db(self):
+        from core.utils import get_setting
+        self.client.login(username='admin_settings', password='password123')
+        post_data = {
+            'SCHOOL_NAME': 'Nouveau Centre Edu',
+            'SCHOOL_SUBTITLE': 'Excellence & Langues',
+            'SCHOOL_ADDRESS': '123 Boulevard Hassan II',
+            'SCHOOL_PHONE': '0600000000',
+            'SCHOOL_EMAIL': 'info@edu.ma',
+            'CURRENCY_SYMBOL': 'EUR',
+            'ENABLE_PRORATION': 'on',
+            'LATE_PAYMENT_GRACE_DAYS': 7,
+            'RECEIPT_FOOTER_THANK_YOU': 'Merci de votre visite !',
+            'WHATSAPP_SESSION_NOTIFICATIONS_ENABLED': 'on',
+            'WHATSAPP_AUTO_ABSENCE_NOTIFICATIONS': 'on',
+            'KIOSK_TIMEOUT': 60,
+            'KIOSK_SEARCH_ENABLED': 'on',
+            'DEFAULT_TEACHER_PAYMENT_METHOD': 'HOURLY',
+        }
+        res = self.client.post('/settings/', post_data)
+        self.assertRedirects(res, '/settings/')
+
+        # Verify DB and get_setting reflect new values
+        self.assertEqual(get_setting('SCHOOL_NAME'), 'Nouveau Centre Edu')
+        self.assertEqual(get_setting('CURRENCY_SYMBOL'), 'EUR')
+        self.assertEqual(get_setting('LATE_PAYMENT_GRACE_DAYS'), '7')
+        self.assertEqual(get_setting('DEFAULT_TEACHER_PAYMENT_METHOD'), 'HOURLY')
+
+
+
+
 

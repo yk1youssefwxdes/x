@@ -2210,7 +2210,8 @@ def whatsapp_absence_notifications(request):
         student = absence.student
         course = absence.course_group
 
-        if not (student.parent_contact or student.parent_contact_2):
+        phones = [p for p in [student.parent_contact, student.parent_contact_2] if p]
+        if not phones:
             continue
 
         # Find the schedule slot that matches the absence date's weekday
@@ -2232,18 +2233,9 @@ def whatsapp_absence_notifications(request):
                 time_str = ''
                 room_str = ''
 
-        # One base contact dict (phone filled per-number below)
-        contact_base = {
-            'name': student.parent_name or 'Parent',
-            'student_name': student.name,
-            'course_name': course.name,
-            'date': target_date.strftime('%d/%m/%Y'),
-            'time': time_str,
-            'room': room_str,
-            'teacher': course.teacher.name if course.teacher else '',
-            'schedule': matching_schedule,
-        }
-        contact = contact_base  # kept for message generation below
+        parent_name = student.parent_name or 'Parent'
+        time_info = f" 🕒 prévu à {time_str}" if time_str else ""
+        date_str = target_date.strftime('%d/%m/%Y')
 
         # Generate personalised absence message
         default_absence_template = (
@@ -2256,30 +2248,33 @@ def whatsapp_absence_notifications(request):
             "🎓 L'équipe pédagogique"
         )
         template_str = load_message_template('whatsapp_absence_notification.txt', default_absence_template)
-        time_info = f" 🕒 prévu à {contact['time']}" if contact['time'] else ""
         message = template_str.format_map(SafeDict({
-            'name': contact['name'],
-            'student_name': contact['student_name'],
-            'course_name': contact['course_name'],
+            'name': parent_name,
+            'student_name': student.name,
+            'course_name': course.name,
             'time_info': time_info,
-            'date': contact['date'],
+            'date': date_str,
         }))
 
-        # Generate message once — same for both phone numbers
-        whatsapp_link = WhatsAppUtils.generate_chat_link(contact['phone'], message)
-        contact['whatsapp_link'] = whatsapp_link
-        contact['message'] = message
-        contact['student'] = student
-        contact['absence'] = absence
-        absence_contacts.append(contact)
-
-        # If a second parent number exists, add a separate entry
-        if student.parent_contact_2 and student.parent_contact_2 != student.parent_contact:
-            contact2 = dict(contact)
-            contact2['phone'] = student.parent_contact_2
-            contact2['phone_label'] = 'Parent 2'
-            contact2['whatsapp_link'] = WhatsAppUtils.generate_chat_link(student.parent_contact_2, message)
-            absence_contacts.append(contact2)
+        for idx, phone in enumerate(phones):
+            whatsapp_link = WhatsAppUtils.generate_chat_link(phone, message)
+            contact = {
+                'phone': phone,
+                'phone_label': f'Parent {idx + 1}' if len(phones) > 1 else 'Parent',
+                'name': parent_name,
+                'student_name': student.name,
+                'course_name': course.name,
+                'date': date_str,
+                'time': time_str,
+                'room': room_str,
+                'teacher': course.teacher.name if course.teacher else '',
+                'schedule': matching_schedule,
+                'whatsapp_link': whatsapp_link,
+                'message': message,
+                'student': student,
+                'absence': absence,
+            }
+            absence_contacts.append(contact)
 
     status_data = WhatsAppServiceAPI.get_status()
 
@@ -5340,6 +5335,63 @@ def restore_history_ajax(request, session_id):
         return JsonResponse({'success': False, 'error': str(ve)}, status=400)
     except Exception as e:
         return JsonResponse({'success': False, 'error': str(e)}, status=500)
+
+
+@require_http_methods(["GET", "POST"])
+def system_settings_view(request):
+    """
+    Panneau de configuration du centre (simple & intuitif).
+    """
+    if not request.user.is_authenticated or not (request.user.is_superuser or request.user.is_staff):
+        messages.error(request, "Accès réservé aux administrateurs.")
+        return redirect('core:cockpit')
+
+    from .forms import SystemSettingsForm
+    from .utils import get_setting, set_setting
+
+    keys = [
+        'SCHOOL_NAME', 'SCHOOL_SUBTITLE', 'SCHOOL_ADDRESS', 'SCHOOL_PHONE', 'SCHOOL_EMAIL',
+        'CURRENCY_SYMBOL', 'RECEIPT_FOOTER_THANK_YOU', 'LATE_PAYMENT_GRACE_DAYS', 'ENABLE_PRORATION',
+        'WHATSAPP_AUTO_ABSENCE_NOTIFICATIONS', 'WHATSAPP_SESSION_NOTIFICATIONS_ENABLED',
+        'KIOSK_TIMEOUT', 'KIOSK_SEARCH_ENABLED',
+        'DEFAULT_TEACHER_PAYMENT_METHOD',
+    ]
+
+    if request.method == 'POST':
+        form = SystemSettingsForm(request.POST)
+        if form.is_valid():
+            for key in keys:
+                val = form.cleaned_data.get(key)
+                if isinstance(val, bool):
+                    val_str = 'True' if val else 'False'
+                elif val is None:
+                    val_str = ''
+                else:
+                    val_str = str(val)
+                set_setting(key, val_str)
+
+            messages.success(request, "Paramètres du centre mis à jour avec succès !")
+            return redirect('core:system_settings')
+        else:
+            messages.error(request, "Veuillez vérifier les champs du formulaire.")
+    else:
+        initial_data = {}
+        for key in keys:
+            raw_val = get_setting(key)
+            if key in ['ENABLE_PRORATION', 'WHATSAPP_SESSION_NOTIFICATIONS_ENABLED', 'WHATSAPP_AUTO_ABSENCE_NOTIFICATIONS', 'KIOSK_SEARCH_ENABLED']:
+                initial_data[key] = str(raw_val).lower() == 'true'
+            elif key in ['LATE_PAYMENT_GRACE_DAYS', 'KIOSK_TIMEOUT']:
+                try:
+                    initial_data[key] = int(raw_val)
+                except ValueError:
+                    initial_data[key] = 0
+            else:
+                initial_data[key] = raw_val
+        form = SystemSettingsForm(initial=initial_data)
+
+    return render(request, 'core/system_settings.html', {'form': form})
+
+
 
 
 

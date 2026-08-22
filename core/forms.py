@@ -457,3 +457,94 @@ class TeacherLeaveForm(forms.ModelForm):
                 'placeholder': 'Raison ou détails optionnels…',
             }),
         }
+
+
+class SystemSettingsForm(forms.Form):
+    # 1. Établissement & Identité
+    SCHOOL_NAME = forms.CharField(
+        label="Nom du centre",
+        required=True,
+        widget=forms.TextInput(attrs={'class': 'form-control form-control-lg', 'placeholder': 'Ex: Centre Tonaroz'})
+    )
+    SCHOOL_SUBTITLE = forms.CharField(
+        label="Slogan / Activité",
+        required=False,
+        widget=forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Ex: Soutien Scolaire & Langues'})
+    )
+    SCHOOL_ADDRESS = forms.CharField(
+        label="Adresse",
+        required=False,
+        widget=forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Adresse complète...'})
+    )
+    SCHOOL_PHONE = forms.CharField(
+        label="Numéro(s) de téléphone",
+        required=False,
+        widget=forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Ex: 0661000000 / 0522000000'})
+    )
+    SCHOOL_EMAIL = forms.EmailField(
+        label="Adresse email de contact",
+        required=False,
+        widget=forms.EmailInput(attrs={'class': 'form-control', 'placeholder': 'contact@centre.com'})
+    )
+
+    # 2. Finances & Reçus
+    CURRENCY_SYMBOL = forms.CharField(
+        label="Devise / Symbole monétaire",
+        required=True,
+        initial="DH",
+        widget=forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Ex: DH, MAD, $, €'})
+    )
+    RECEIPT_FOOTER_THANK_YOU = forms.CharField(
+        label="Message d'impression au bas des reçus",
+        required=False,
+        widget=forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Ex: Merci pour votre confiance !'})
+    )
+    LATE_PAYMENT_GRACE_DAYS = forms.IntegerField(
+        label="Jours d'échéance autorisés (Retard de paiement)",
+        min_value=0,
+        required=True,
+        widget=forms.NumberInput(attrs={'class': 'form-control'})
+    )
+    ENABLE_PRORATION = forms.BooleanField(
+        label="Calculer au prorata le 1er mois pour les inscriptions en cours de mois",
+        required=False,
+        widget=forms.CheckboxInput(attrs={'class': 'form-check-input'})
+    )
+
+    # 3. Notifications WhatsApp
+    WHATSAPP_AUTO_ABSENCE_NOTIFICATIONS = forms.BooleanField(
+        label="Envoyer un message WhatsApp automatique aux parents en cas d'absence",
+        required=False,
+        widget=forms.CheckboxInput(attrs={'class': 'form-check-input'})
+    )
+    WHATSAPP_SESSION_NOTIFICATIONS_ENABLED = forms.BooleanField(
+        label="Notifier les élèves/parents en cas de changement d'horaire ou de salle",
+        required=False,
+        widget=forms.CheckboxInput(attrs={'class': 'form-check-input'})
+    )
+
+    # 4. Borne Kiosque Élèves
+    KIOSK_TIMEOUT = forms.IntegerField(
+        label="Secondes d'inactivité avant retour à l'écran d'accueil du kiosque",
+        min_value=5,
+        required=True,
+        widget=forms.NumberInput(attrs={'class': 'form-control'})
+    )
+    KIOSK_SEARCH_ENABLED = forms.BooleanField(
+        label="Autoriser les élèves à chercher leur nom sur la borne d'accueil",
+        required=False,
+        widget=forms.CheckboxInput(attrs={'class': 'form-check-input'})
+    )
+
+    # 5. Enseignants
+    DEFAULT_TEACHER_PAYMENT_METHOD = forms.ChoiceField(
+        label="Mode de paiement par défaut pour les nouveaux professeurs",
+        choices=[
+            ('SESSION', 'Tarif par session (séance)'),
+            ('HOURLY', 'Tarif par heure (taux horaire)'),
+            ('PERCENTAGE', 'Pourcentage des gains du groupe'),
+        ],
+        widget=forms.Select(attrs={'class': 'form-select'})
+    )
+
+

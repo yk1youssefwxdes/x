@@ -60,10 +60,14 @@ def school_info(request):
     """
     Returns configurable school settings to be available in all templates.
     """
+    from .utils import get_setting
     return {
-        'SCHOOL_NAME': getattr(settings, 'SCHOOL_NAME', 'Afnane center'),
-        'SCHOOL_ADDRESS': getattr(settings, 'SCHOOL_ADDRESS', 'Rue Marrakech, Im 16, Ap N 3, 2ème Étage, Khouribga'),
-        'SCHOOL_PHONE': getattr(settings, 'SCHOOL_PHONE', '0707477911 / 0661569522'),
-        'SCHOOL_EMAIL': getattr(settings, 'SCHOOL_EMAIL', 'contact@centre-tonaroz.com'),
-        'SCHOOL_LOGO_PATH': getattr(settings, 'SCHOOL_LOGO_PATH', 'images/tonaroz_logo.svg'),
+        'SCHOOL_NAME': get_setting('SCHOOL_NAME', 'Centre Tonaroz'),
+        'SCHOOL_SUBTITLE': get_setting('SCHOOL_SUBTITLE', 'Soutien Scolaire & Langues'),
+        'SCHOOL_ADDRESS': get_setting('SCHOOL_ADDRESS', 'Rue Marrakech, Im 16, Ap N 3, 2ème Étage, Khouribga'),
+        'SCHOOL_PHONE': get_setting('SCHOOL_PHONE', '0707477911 / 0661569522'),
+        'SCHOOL_EMAIL': get_setting('SCHOOL_EMAIL', 'contact@centre-tonaroz.com'),
+        'SCHOOL_LOGO_PATH': get_setting('SCHOOL_LOGO_PATH', 'images/tonaroz_logo.svg'),
+        'CURRENCY_SYMBOL': get_setting('CURRENCY_SYMBOL', 'DH'),
     }
+

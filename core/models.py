@@ -1467,4 +1467,19 @@ class RoomAvailability(models.Model):
         return f"Salle {self.room.name} - {self.get_day_display()} {self.start_time.strftime('%H:%M')}-{self.end_time.strftime('%H:%M')} ({status})"
 
 
+class SystemSetting(models.Model):
+    key = models.CharField(max_length=100, unique=True, db_index=True, verbose_name="Clé")
+    value = models.TextField(blank=True, verbose_name="Valeur")
+    label = models.CharField(max_length=200, blank=True, verbose_name="Libellé")
+    group = models.CharField(max_length=50, default='GENERAL', verbose_name="Groupe")
+
+    class Meta:
+        verbose_name = "Paramètre système"
+        verbose_name_plural = "Paramètres système"
+
+    def __str__(self):
+        return f"{self.label or self.key}: {self.value}"
+
+
+
 

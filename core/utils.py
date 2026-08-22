@@ -24,6 +24,66 @@ class SafeDict(dict):
     def __missing__(self, key):
         return f"{{{key}}}"
 
+DEFAULT_SETTINGS = {
+    'SCHOOL_NAME': 'Centre Tonaroz',
+    'SCHOOL_SUBTITLE': 'Soutien Scolaire & Langues',
+    'SCHOOL_ADDRESS': 'Rue Marrakech, Im 16, Ap N 3, 2ème Étage, Khouribga',
+    'SCHOOL_PHONE': '0707477911 / 0661569522',
+    'SCHOOL_EMAIL': 'contact@centre-tonaroz.com',
+    'SCHOOL_LOGO_PATH': 'images/tonaroz_logo.svg',
+    'CURRENCY_SYMBOL': 'DH',
+    'ENABLE_PRORATION': 'True',
+    'LATE_PAYMENT_GRACE_DAYS': '5',
+    'RECEIPT_FOOTER_THANK_YOU': 'Merci pour votre confiance ! - شكراً لثقتكم',
+    'WHATSAPP_API_KEY': '',
+    'WHATSAPP_SERVICE_PORT': '3000',
+    'WHATSAPP_SESSION_NOTIFICATIONS_ENABLED': 'True',
+    'WHATSAPP_AUTO_ABSENCE_NOTIFICATIONS': 'True',
+    'KIOSK_TIMEOUT': '45',
+    'KIOSK_SEARCH_ENABLED': 'True',
+    'CONFLICT_CACHE_TTL': '120',
+    'RESCHEDULING_SEARCH_HORIZON': '21',
+    'CAPACITY_WARNING_MARGIN': '2',
+    'CAPACITY_NEAR_LIMIT_RATIO': '0.9',
+    'DEFAULT_TEACHER_PAYMENT_METHOD': 'SESSION',
+}
+
+def get_setting(key: str, default=None):
+    """
+    Retrieves a runtime system setting from DB with cache fallback.
+    """
+    from django.core.cache import cache
+    cache_key = f'sys_setting_{key}'
+    val = cache.get(cache_key)
+    if val is not None:
+        return val
+
+    try:
+        from .models import SystemSetting
+        item = SystemSetting.objects.filter(key=key).first()
+        if item and item.value is not None:
+            val = str(item.value)
+        else:
+            val = str(getattr(settings, key, DEFAULT_SETTINGS.get(key, default if default is not None else '')))
+    except Exception:
+        val = str(getattr(settings, key, DEFAULT_SETTINGS.get(key, default if default is not None else '')))
+
+    cache.set(cache_key, val, 60)
+    return val
+
+def set_setting(key: str, value: str, label: str = '', group: str = 'GENERAL'):
+    from django.core.cache import cache
+    from .models import SystemSetting
+    item, _ = SystemSetting.objects.get_or_create(key=key)
+    item.value = str(value)
+    if label:
+        item.label = label
+    if group:
+        item.group = group
+    item.save()
+    cache.delete(f'sys_setting_{key}')
+
+
 from decimal import ROUND_UP
 
 def is_paid_status(status: str) -> bool:
@@ -1471,7 +1531,8 @@ def generate_receipt_pdf(payment) -> BytesIO:
     p.setFont("Helvetica-Bold", 14)
     p.drawString(30, y_position, "MONTANT PAYÉ :")
     p.setFont("Helvetica-Bold", 18)
-    p.drawString(width - 150, y_position, f"{payment.amount} DH")
+    currency = get_setting('CURRENCY_SYMBOL', 'DH')
+    p.drawString(width - 150, y_position, f"{payment.amount} {currency}")
     
     # Ligne séparatrice
     y_position -= 15
@@ -1490,7 +1551,7 @@ def generate_receipt_pdf(payment) -> BytesIO:
         is_prorated = False
         if month_covered and enrollment.enrolled_date.year == month_covered.year and enrollment.enrolled_date.month == month_covered.month:
             if enrollment.enrolled_date.day > 1:
-                is_prorated = True
+                is_prorated = False if get_setting('ENABLE_PRORATION', 'True').lower() == 'false' else True
                 
         if is_prorated:
             total_sess = count_scheduled_sessions_in_month(enrollment.course_group, month_covered.year, month_covered.month)
@@ -1503,16 +1564,19 @@ def generate_receipt_pdf(payment) -> BytesIO:
             else:
                 sess_price = Decimal('0.00')
                 prorated_price = Decimal('0.00')
-            p.drawString(40, y_position, f"• {enrollment.course_group.name} (Proratisé: {rem_sess} séance{'' if rem_sess == 1 else 's'}) - {prorated_price} DH")
+            p.drawString(40, y_position, f"• {enrollment.course_group.name} (Proratisé: {rem_sess} séance{'' if rem_sess == 1 else 's'}) - {prorated_price} {currency}")
         else:
-            p.drawString(40, y_position, f"• {enrollment.course_group.name} - {enrollment.course_group.monthly_price} DH")
+            p.drawString(40, y_position, f"• {enrollment.course_group.name} - {enrollment.course_group.monthly_price} {currency}")
     
     # Pied de page
     p.setFont("Helvetica-Oblique", 8)
-    p.drawCentredString(width/2, 40, "Merci pour votre confiance ! - شكراً لثقتكم")
-    school_name = getattr(settings, 'SCHOOL_NAME', 'Afnane center')
-    school_phone = getattr(settings, 'SCHOOL_PHONE', '')
-    p.drawCentredString(width/2, 28, f"{school_name} - Soutien Scolaire & Langues - Tél: {school_phone}")
+    thank_you_note = get_setting('RECEIPT_FOOTER_THANK_YOU', 'Merci pour votre confiance ! - شكراً لثقتكم')
+    p.drawCentredString(width/2, 40, thank_you_note)
+    school_name = get_setting('SCHOOL_NAME', 'Centre Tonaroz')
+    school_phone = get_setting('SCHOOL_PHONE', '')
+    school_subtitle = get_setting('SCHOOL_SUBTITLE', 'Soutien Scolaire & Langues')
+    p.drawCentredString(width/2, 28, f"{school_name} - {school_subtitle} - Tél: {school_phone}")
+
     
     # Finaliser
     p.showPage()
