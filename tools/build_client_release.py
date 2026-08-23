@@ -170,6 +170,9 @@ def copy_source_to_release(source_root: Path, release_root: Path) -> None:
         "whatsapp_session",
         ".wwebjs_cache",
         ".wwebjs_auth",
+        "data",
+        "logs",
+        "backups",
     }
     exclude_files = {
         "run_server.py.bak",
