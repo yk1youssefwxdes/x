@@ -861,6 +861,17 @@ class ServerApp:
         self._thread_log("Loading Django & Waitress handlers...")
 
         try:
+            import django
+            django.setup()
+            from django.core.management import call_command
+            from core.paths import get_database_path
+
+            db_file = get_database_path()
+            if not db_file.exists() or db_file.stat().st_size == 0:
+                self._thread_log("Initializing database for first-time launch...")
+                call_command("migrate", interactive=False, verbosity=0)
+                self._thread_log("Database initialized successfully.")
+
             from django.contrib.staticfiles.handlers import StaticFilesHandler
             from school_erp.wsgi import application
             from waitress.server import create_server
