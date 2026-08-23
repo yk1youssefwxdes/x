@@ -159,7 +159,8 @@ def create_database_backup(
 
     # 2. Resolve destination directory & filenames
     if destination_dir is None:
-        dest_dir = Path(settings.BASE_DIR) / "backups"
+        from core.paths import get_backups_dir
+        dest_dir = get_backups_dir()
     else:
         dest_dir = Path(destination_dir).resolve()
 

@@ -15,12 +15,25 @@ from django.templatetags.static import static
 from django.urls import reverse_lazy
 import os
 
+from core.paths import (
+    get_base_dir,
+    get_data_dir,
+    get_database_path,
+    get_media_dir,
+    get_logs_dir,
+    ensure_data_directories,
+)
+from core.version import VERSION
+
+# Ensure writable customer data directories exist
+ensure_data_directories()
+
 # Early license check to prevent unauthorized use when Django imports settings
 from core.license import validate_or_exit
 validate_or_exit()
 
-# Build paths inside the project like this: BASE_DIR / 'subdir'.
-BASE_DIR = Path(__file__).resolve().parent.parent
+# Application root directory (immutable code and templates)
+BASE_DIR = get_base_dir()
 
 
 # Quick-start development settings - unsuitable for production
@@ -312,7 +325,7 @@ WSGI_APPLICATION = 'school_erp.wsgi.application'
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
+        'NAME': get_database_path(),
         "OPTIONS": {
             # Python-level connection timeout (seconds).
             # sqlite3.connect(timeout=30) also internally sets SQLite's
@@ -368,9 +381,9 @@ STATIC_URL = '/static/'
 STATICFILES_DIRS = [BASE_DIR / 'static']
 STATIC_ROOT = BASE_DIR / 'staticfiles'
 
-# Media files
+# Media files (Customer uploads in writable data directory)
 MEDIA_URL = '/media/'
-MEDIA_ROOT = BASE_DIR / 'media'
+MEDIA_ROOT = get_media_dir()
 
 LOGIN_REDIRECT_URL = 'core:cockpit'
 LOGOUT_REDIRECT_URL = '/admin/login/'
@@ -384,3 +397,46 @@ WHATSAPP_SERVICE_PORT = os.environ.get("WA_PORT", 3000)
 SESSION_EXPIRE_AT_BROWSER_CLOSE = True
 
 SITE_ID = 1
+
+# Production Logging Configuration
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'formatters': {
+        'standard': {
+            'format': '[%(asctime)s] [%(levelname)s] [%(name)s]: %(message)s',
+            'datefmt': '%Y-%m-%d %H:%M:%S',
+        },
+    },
+    'handlers': {
+        'console': {
+            'class': 'logging.StreamHandler',
+            'formatter': 'standard',
+        },
+        'file': {
+            'class': 'logging.handlers.RotatingFileHandler',
+            'filename': str(get_logs_dir() / 'django.log'),
+            'maxBytes': 5 * 1024 * 1024,  # 5 MB
+            'backupCount': 3,
+            'formatter': 'standard',
+            'encoding': 'utf-8',
+        },
+    },
+    'root': {
+        'handlers': ['console', 'file'],
+        'level': 'INFO',
+    },
+    'loggers': {
+        'django': {
+            'handlers': ['console', 'file'],
+            'level': 'INFO',
+            'propagate': False,
+        },
+        'core': {
+            'handlers': ['console', 'file'],
+            'level': 'INFO',
+            'propagate': False,
+        },
+    },
+}
+

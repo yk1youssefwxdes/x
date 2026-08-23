@@ -1,7 +1,6 @@
 import datetime
 import json
 import os
-import re
 import secrets
 import socket
 import subprocess
@@ -10,34 +9,129 @@ import threading
 import time
 import tkinter as tk
 import webbrowser
+from pathlib import Path
 from tkinter import messagebox, ttk
 from urllib.request import urlopen
 
+# Early customer data directories bootstrap & legacy data migration
+from core.paths import (
+    get_base_dir as _get_paths_base_dir,
+    get_data_dir,
+    get_config_dir,
+    get_logs_dir,
+    get_whatsapp_session_dir,
+    ensure_data_directories,
+    migrate_legacy_data,
+)
+from core.version import VERSION, APP_NAME
+
+ensure_data_directories()
+migrate_legacy_data()
+
 
 # ---------------------------------------------------------------------------
-# Version parsing (stdlib only)
+# Runtime discovery helpers (Commercial Bundled vs. Local Development)
 # ---------------------------------------------------------------------------
 
-def _parse_npm_version(raw):
-    """
-    Parse an npm dependency version specifier into a (major, minor, patch) tuple.
+def _get_base_dir() -> str:
+    """Directory containing this script or the frozen executable."""
+    if getattr(sys, "frozen", False) or "nuitka" in sys.modules:
+        return os.path.dirname(os.path.abspath(sys.argv[0]))
+    return str(_get_paths_base_dir())
 
-    Handles common forms: 1.2.3  ^1.2.3  ~1.2.3  >=1.2.3  v1.2.3
-    Returns None if the string cannot be parsed.
-    Never raises.
+
+def get_runtime_dir() -> str:
+    """Path to the bundled runtime directory."""
+    return os.path.join(_get_base_dir(), "runtime")
+
+
+def get_python_executable() -> str:
     """
-    if not raw:
-        return None
-    try:
-        cleaned = re.sub(r'^[^\d]*', '', str(raw).strip())
-        cleaned = re.split(r'[\s\-]', cleaned)[0]
-        parts = cleaned.split('.')
-        major = int(parts[0]) if len(parts) > 0 else 0
-        minor = int(parts[1]) if len(parts) > 1 else 0
-        patch = int(parts[2]) if len(parts) > 2 else 0
-        return (major, minor, patch)
-    except Exception:
-        return None
+    Locate Python executable.
+    1. Bundled private runtime: runtime/python/python.exe (Win) or runtime/python/bin/python (Linux)
+    2. Local venv/ or .venv/
+    3. sys.executable
+    """
+    runtime_dir = get_runtime_dir()
+    if sys.platform == "win32":
+        bundled = os.path.join(runtime_dir, "python", "python.exe")
+    else:
+        bundled = os.path.join(runtime_dir, "python", "bin", "python")
+
+    if os.path.isfile(bundled):
+        return bundled
+
+    base_dir = _get_base_dir()
+    for candidate in ("venv", ".venv"):
+        vpath = os.path.join(base_dir, candidate)
+        if os.path.isdir(vpath):
+            if sys.platform == "win32":
+                vpy = os.path.join(vpath, "Scripts", "python.exe")
+            else:
+                vpy = os.path.join(vpath, "bin", "python")
+            if os.path.isfile(vpy):
+                return vpy
+
+    return sys.executable
+
+
+def get_node_executable() -> str:
+    """
+    Locate Node.js executable.
+    1. Bundled private runtime: runtime/node/node.exe (Win) or runtime/node/bin/node (Linux)
+    2. System node.exe (Win) or node (Linux)
+    """
+    runtime_dir = get_runtime_dir()
+    if sys.platform == "win32":
+        bundled = os.path.join(runtime_dir, "node", "node.exe")
+    else:
+        bundled = os.path.join(runtime_dir, "node", "bin", "node")
+
+    if os.path.isfile(bundled):
+        return bundled
+
+    return "node.exe" if sys.platform == "win32" else "node"
+
+
+def get_npm_executable() -> str:
+    """
+    Locate npm executable.
+    1. Bundled private runtime: runtime/node/npm.cmd (Win) or runtime/node/bin/npm (Linux)
+    2. System npm.cmd (Win) or npm (Linux)
+    """
+    runtime_dir = get_runtime_dir()
+    if sys.platform == "win32":
+        bundled = os.path.join(runtime_dir, "node", "npm.cmd")
+    else:
+        bundled = os.path.join(runtime_dir, "node", "bin", "npm")
+
+    if os.path.isfile(bundled):
+        return bundled
+
+    return "npm.cmd" if sys.platform == "win32" else "npm"
+
+
+def get_chromium_executable() -> str | None:
+    """
+    Locate Chromium browser binary for Puppeteer / WhatsApp.
+    1. Bundled private runtime: runtime/chromium/chrome.exe (Win) or runtime/chromium/chrome (Linux)
+    2. CHROME_PATH environment variable if set and existing
+    3. None (Puppeteer internal fallback)
+    """
+    runtime_dir = get_runtime_dir()
+    if sys.platform == "win32":
+        bundled = os.path.join(runtime_dir, "chromium", "chrome.exe")
+    else:
+        bundled = os.path.join(runtime_dir, "chromium", "chrome")
+
+    if os.path.isfile(bundled):
+        return bundled
+
+    env_chrome = os.environ.get("CHROME_PATH")
+    if env_chrome and os.path.isfile(env_chrome):
+        return env_chrome
+
+    return None
 
 
 # ---------------------------------------------------------------------------
@@ -57,7 +151,6 @@ def is_port_available(port, host="0.0.0.0"):
 def find_free_port(start_port, host="0.0.0.0", max_port=65535):
     """
     Return the first available TCP port >= start_port on *host*.
-    Note: TOCTOU check — callers handle EADDRINUSE on bind.
     """
     port = start_port
     while port <= max_port:
@@ -84,7 +177,6 @@ def get_local_ip():
 def _stop_process_tree(process, name, log_fn=None):
     """
     Terminate *process* and its entire process group / tree.
-    Contains zero Tkinter calls.
     """
     _log = log_fn if callable(log_fn) else (lambda _msg: None)
 
@@ -162,18 +254,11 @@ def _run_subprocess(args, **kwargs):
 
 
 # ---------------------------------------------------------------------------
-# Path / environment helpers
+# Path / environment / config helpers
 # ---------------------------------------------------------------------------
 
-def _get_base_dir():
-    """Directory containing this script, or the frozen / Nuitka executable."""
-    if getattr(sys, "frozen", False) or "nuitka" in sys.modules:
-        return os.path.dirname(os.path.abspath(sys.argv[0]))
-    return os.path.dirname(os.path.abspath(__file__))
-
-
 def _get_config_path():
-    return os.path.join(_get_base_dir(), "run_server_config.json")
+    return os.path.join(str(get_config_dir()), "run_server_config.json")
 
 
 def _load_local_config():
@@ -194,41 +279,22 @@ def _save_local_config(config):
 
 def _relaunch_in_venv_if_needed():
     """
-    If running as a plain script and a venv exists next to this file,
-    re-exec using the venv's Python interpreter.
+    If running in development as a plain script, re-exec using discovered Python runtime.
     """
     if getattr(sys, "frozen", False) or "nuitka" in sys.modules:
         return
 
-    base_dir = _get_base_dir()
-    venv_dir = None
-    for candidate in ("venv", ".venv"):
-        path = os.path.join(base_dir, candidate)
-        if os.path.isdir(path):
-            venv_dir = path
-            break
-
-    if venv_dir is None:
-        return
-
-    if sys.platform == "win32":
-        venv_python = os.path.join(venv_dir, "Scripts", "python.exe")
-    else:
-        venv_python = os.path.join(venv_dir, "bin", "python")
-
-    if not os.path.isfile(venv_python):
-        return
-
+    py_exe = get_python_executable()
     try:
-        if os.path.samefile(sys.executable, venv_python):
+        if os.path.samefile(sys.executable, py_exe):
             return
     except OSError:
         if os.path.normcase(os.path.abspath(sys.executable)) == os.path.normcase(
-            os.path.abspath(venv_python)
+            os.path.abspath(py_exe)
         ):
             return
 
-    sys.exit(subprocess.run([venv_python] + sys.argv).returncode)
+    sys.exit(subprocess.run([py_exe] + sys.argv).returncode)
 
 
 _relaunch_in_venv_if_needed()
@@ -274,6 +340,25 @@ FONT      = "Segoe UI"
 
 
 # ---------------------------------------------------------------------------
+# Disk Logger (Structured logging to logs/launcher.log)
+# ---------------------------------------------------------------------------
+
+_log_lock = threading.Lock()
+
+def _disk_log(message: str, level: str = "INFO"):
+    """Thread-safe structured logging to customer logs directory."""
+    try:
+        log_file = get_logs_dir() / "launcher.log"
+        timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        log_line = f"[{timestamp}] [{level}] [Launcher]: {message}\n"
+        with _log_lock:
+            with open(log_file, "a", encoding="utf-8") as f:
+                f.write(log_line)
+    except Exception:
+        pass
+
+
+# ---------------------------------------------------------------------------
 # Server Session (Encapsulates all session-specific state)
 # ---------------------------------------------------------------------------
 
@@ -302,7 +387,7 @@ class ServerSession:
 class ServerApp:
     def __init__(self, root):
         self.root = root
-        self.root.title("School ERP Server Controller")
+        self.root.title(f"{APP_NAME} v{VERSION} — Server Controller")
         self.root.geometry("480x420")
         self.root.minsize(480, 420)
         self.root.configure(bg=BG)
@@ -323,6 +408,8 @@ class ServerApp:
         self._build_style()
         self._build_ui()
         self.root.protocol("WM_DELETE_WINDOW", self.on_closing)
+
+        _disk_log(f"Launcher initialized ({APP_NAME} v{VERSION}). Data dir: {get_data_dir()}")
 
     # =========================================================================
     # API key
@@ -364,9 +451,15 @@ class ServerApp:
 
     def _log(self, message):
         """Append entry to activity log. Main thread only."""
+        clean_msg = message
+        if self.whatsapp_api_key:
+            clean_msg = clean_msg.replace(self.whatsapp_api_key, "[REDACTED]")
+
+        _disk_log(clean_msg)
+
         timestamp = datetime.datetime.now().strftime("%H:%M:%S")
         self.log_text.configure(state="normal")
-        self.log_text.insert("end", f"[{timestamp}] {message}\n")
+        self.log_text.insert("end", f"[{timestamp}] {clean_msg}\n")
         self.log_text.configure(state="disabled")
         self.log_text.see("end")
 
@@ -420,9 +513,9 @@ class ServerApp:
         # Header
         header = tk.Frame(root_frame, bg=BG)
         header.pack(fill="x", pady=(0, 14))
-        tk.Label(header, text="School ERP", font=(FONT, 16, "bold"),
+        tk.Label(header, text=APP_NAME, font=(FONT, 16, "bold"),
                  bg=BG, fg=TEXT_MAIN).pack(anchor="w")
-        tk.Label(header, text="Local Server Controller", font=(FONT, 10),
+        tk.Label(header, text=f"Local Server Controller • v{VERSION}", font=(FONT, 10),
                  bg=BG, fg=TEXT_DIM).pack(anchor="w")
 
         # Status card
@@ -535,124 +628,6 @@ class ServerApp:
             self.url_label.config(text="")
 
     # =========================================================================
-    # npm auto-update
-    # =========================================================================
-
-    def _check_npm_update(self, npm_cmd, package_json_path, service_dir, session):
-        """
-        Check whether a newer stable version of whatsapp-web.js exists on npm
-        and install it automatically if so. Non-fatal.
-        Determines installed version from node_modules/whatsapp-web.js/package.json first.
-        """
-        self._thread_log("Checking for whatsapp-web.js updates...")
-
-        # Determine installed version from node_modules if available
-        installed_version_raw = None
-        installed_pkg_path = os.path.join(
-            service_dir, "node_modules", "whatsapp-web.js", "package.json"
-        )
-        if os.path.isfile(installed_pkg_path):
-            try:
-                with open(installed_pkg_path, "r", encoding="utf-8") as f:
-                    installed_version_raw = json.load(f).get("version")
-            except Exception:
-                pass
-
-        if not installed_version_raw:
-            # Fall back to package.json dependency specifier
-            try:
-                with open(package_json_path, "r", encoding="utf-8") as f:
-                    installed_version_raw = json.load(f).get("dependencies", {}).get("whatsapp-web.js")
-            except Exception as exc:
-                self._thread_log(f"Could not read package.json: {exc}. Skipping update check.")
-                return
-
-        # Query npm registry
-        try:
-            result = _run_subprocess(
-                [npm_cmd, "view", "whatsapp-web.js", "version"],
-                cwd=service_dir,
-                capture_output=True,
-                text=True,
-                timeout=15,
-            )
-        except subprocess.TimeoutExpired:
-            self._thread_log("whatsapp-web.js update check timed out. Continuing with installed version.")
-            return
-        except FileNotFoundError:
-            self._thread_log("npm not found during update check. Skipping.")
-            return
-        except Exception as exc:
-            self._thread_log(f"whatsapp-web.js update check error: {exc}")
-            return
-
-        if result.returncode != 0 or not result.stdout.strip():
-            self._thread_log(
-                "Could not check whatsapp-web.js updates (offline or npm error). "
-                "Continuing with installed version."
-            )
-            return
-
-        latest_raw = result.stdout.strip()
-        current_tuple = _parse_npm_version(installed_version_raw)
-        latest_tuple = _parse_npm_version(latest_raw)
-
-        if current_tuple is None:
-            self._thread_log(
-                f"Latest whatsapp-web.js on npm: {latest_raw} "
-                f"(installed version not parseable: {installed_version_raw!r})."
-            )
-            return
-
-        if latest_tuple is None:
-            self._thread_log(f"Could not parse npm version {latest_raw!r}. Skipping update.")
-            return
-
-        current_str = ".".join(str(x) for x in current_tuple)
-        latest_str = ".".join(str(x) for x in latest_tuple)
-
-        if latest_tuple > current_tuple:
-            self._thread_log(
-                f"whatsapp-web.js update available: {current_str} → {latest_str}. Installing…"
-            )
-
-            if not self._is_valid_session(session):
-                return
-
-            try:
-                install_result = _run_subprocess(
-                    [npm_cmd, "install", f"whatsapp-web.js@{latest_raw}"],
-                    cwd=service_dir,
-                    capture_output=True,
-                    text=True,
-                    timeout=180,
-                )
-                if install_result.returncode == 0:
-                    self._thread_log(f"whatsapp-web.js updated to v{latest_raw}.")
-                else:
-                    err_tail = (
-                        install_result.stderr or install_result.stdout or ""
-                    ).strip()[-300:]
-                    if self.whatsapp_api_key:
-                        err_tail = err_tail.replace(self.whatsapp_api_key, "[REDACTED]")
-                    self._thread_log(
-                        f"whatsapp-web.js update failed, continuing with existing version. ({err_tail})"
-                    )
-            except subprocess.TimeoutExpired:
-                self._thread_log(
-                    "whatsapp-web.js update installation timed out. Continuing with existing version."
-                )
-            except Exception as exc:
-                self._thread_log(f"whatsapp-web.js update error: {exc}")
-
-        elif latest_tuple < current_tuple:
-            self._thread_log(
-                f"whatsapp-web.js: local ({current_str}) is ahead of npm ({latest_str}). Skipping update."
-            )
-        else:
-            self._thread_log(f"whatsapp-web.js is up to date (v{latest_str}).")
-
-    # =========================================================================
     # WhatsApp health check
     # =========================================================================
 
@@ -685,36 +660,21 @@ class ServerApp:
         if not self._is_valid_session(session):
             return
 
-        node_cmd = "node.exe" if sys.platform == "win32" else "node"
-        npm_cmd  = "npm.cmd"  if sys.platform == "win32" else "npm"
+        node_cmd = get_node_executable()
 
-        # Check Node.js
+        # Check Node.js runtime availability
         node_available = False
         try:
             r = _run_subprocess([node_cmd, "--version"], capture_output=True, text=True, timeout=5)
             if r.returncode == 0:
                 node_available = True
-                self._thread_log(f"Node.js found: {r.stdout.strip()}")
+                self._thread_log(f"Using Node.js ({node_cmd}): {r.stdout.strip()}")
             else:
                 self._thread_log("ERROR: Node.js version check returned non-zero.")
         except FileNotFoundError:
-            self._thread_log("ERROR: Node.js is not installed or not in PATH.")
+            self._thread_log(f"ERROR: Node.js runtime '{node_cmd}' was not found.")
         except subprocess.TimeoutExpired:
             self._thread_log("ERROR: Node.js version check timed out.")
-
-        # Check npm
-        npm_available = False
-        try:
-            r = _run_subprocess([npm_cmd, "--version"], capture_output=True, text=True, timeout=5)
-            if r.returncode == 0:
-                npm_available = True
-                self._thread_log(f"npm found: {r.stdout.strip()}")
-            else:
-                self._thread_log("npm check returned non-zero. Skipping update check.")
-        except FileNotFoundError:
-            self._thread_log("npm not found. Skipping update check.")
-        except subprocess.TimeoutExpired:
-            self._thread_log("npm version check timed out. Skipping update check.")
 
         server_js_path    = os.path.join(service_dir, "server.js")
         package_json_path = os.path.join(service_dir, "package.json")
@@ -734,10 +694,6 @@ class ServerApp:
         if not os.path.isfile(package_json_path):
             self._thread_log("ERROR: whatsapp_service/package.json not found.")
             return
-
-        # npm auto-update
-        if npm_available and self._is_valid_session(session):
-            self._check_npm_update(npm_cmd, package_json_path, service_dir, session)
 
         if not self._is_valid_session(session):
             return
@@ -762,8 +718,16 @@ class ServerApp:
             popen_kwargs["start_new_session"] = True
 
         env = os.environ.copy()
-        env["WA_PORT"]    = str(wa_port)
-        env["WA_API_KEY"] = self.whatsapp_api_key
+        env["WA_PORT"]             = str(wa_port)
+        env["WA_API_KEY"]          = self.whatsapp_api_key
+        env["WA_SESSION_DIR"]      = str(get_whatsapp_session_dir())
+        env["WA_LOG_DIR"]          = str(get_logs_dir())
+        env["SCHOOL_ERP_DATA_DIR"] = str(get_data_dir())
+
+        chromium_bin = get_chromium_executable()
+        if chromium_bin:
+            env["CHROME_PATH"] = chromium_bin
+            self._thread_log(f"Using Chromium runtime at: {chromium_bin}")
 
         launched_process = None
         for _attempt in range(1, 4):
@@ -777,7 +741,7 @@ class ServerApp:
                     **popen_kwargs,
                 )
             except FileNotFoundError:
-                self._thread_log("ERROR: node executable not found during Popen.")
+                self._thread_log(f"ERROR: node executable '{node_cmd}' not found during launch.")
                 return
             except Exception as exc:
                 self._thread_log(f"ERROR: Failed to launch WhatsApp service: {exc}")
@@ -800,8 +764,7 @@ class ServerApp:
                         if text:
                             if self.whatsapp_api_key:
                                 text = text.replace(self.whatsapp_api_key, "[REDACTED]")
-                            # Filter noisy debug lines if needed, or forward diagnostic output
-                            if any(k in text for k in ("listening", "Error", "INITIALIZING", "READY", "QR")):
+                            if any(k in text for k in ("listening", "Error", "INITIALIZING", "READY", "QR", "STARTING")):
                                 self._thread_log(f"[{stream_name}] {text}")
                 except Exception:
                     pass
@@ -868,12 +831,12 @@ class ServerApp:
             self._thread_log(f"WhatsApp automation service is listening on port {wa_port}.")
             if wa_status == "READY":
                 self._thread_log("WhatsApp client is connected and ready.")
-            elif wa_status in ("QR_RECEIVED", "INITIALIZING", "AUTHENTICATED"):
+            elif wa_status in ("QR_RECEIVED", "INITIALIZING", "AUTHENTICATED", "STARTING"):
                 self._thread_log(
                     f"WhatsApp client status: {wa_status}. "
                     "Open the dashboard to scan the QR code if prompted."
                 )
-            elif wa_status in ("DISCONNECTED", "ERROR", "AUTHENTICATION_FAILED"):
+            elif wa_status in ("DISCONNECTED", "ERROR", "AUTHENTICATION_FAILED", "RESTART_WAIT"):
                 self._thread_log(
                     f"WhatsApp client status: {wa_status}. "
                     "The dashboard will show more details."
@@ -1174,7 +1137,7 @@ class ServerApp:
         if server_running or node_running:
             if not messagebox.askokcancel(
                 "Quit",
-                "School ERP services are still running. Stop them and quit?",
+                f"{APP_NAME} services are still running. Stop them and quit?",
             ):
                 return
 

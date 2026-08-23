@@ -2071,11 +2071,11 @@ import os
 
 def load_message_template(filename: str, default_content: str) -> str:
     """
-    Loads a message template from the messages/ directory in the project root.
+    Loads a message template from the customer messages directory.
     If the directory or file does not exist, it creates them with default_content.
     """
-    base_dir = settings.BASE_DIR
-    messages_dir = os.path.join(base_dir, 'messages')
+    from core.paths import get_messages_dir
+    messages_dir = str(get_messages_dir())
     
     if not os.path.exists(messages_dir):
         try:

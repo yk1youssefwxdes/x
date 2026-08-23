@@ -8,9 +8,9 @@ from typing import Final
 from .hardware import get_fingerprint_hash
 from .license_utils import (
     decrypt_license_file,
-    get_project_root,
     get_license_secret,
 )
+from .paths import get_license_file_path
 
 
 
@@ -20,8 +20,7 @@ _ERROR_MESSAGE: Final[str] = "This copy of the application is not licensed for t
 
 
 def _load_license_data() -> dict:
-    project_root = get_project_root()
-    license_path = project_root / _LICENSE_FILE_NAME
+    license_path = get_license_file_path()
     if not license_path.exists():
         _die("License file missing.")
 

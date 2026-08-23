@@ -193,8 +193,11 @@ class TonarozAdminSite(UnfoldAdminSite):
     def _message_templates(self, request):
         import os
         import re
+        from core.paths import get_messages_dir
 
-        messages_dir = os.path.join(settings.BASE_DIR, 'messages')
+        messages_dir = str(get_messages_dir())
+        if not os.path.exists(messages_dir):
+            os.makedirs(messages_dir, exist_ok=True)
 
         # Collect all .txt files
         all_files = sorted(
