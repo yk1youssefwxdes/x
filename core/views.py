@@ -1005,7 +1005,7 @@ def sessions_schedule(request):
             pass  # Keep current week
     
     # Determine view mode (room-based or teacher-based)
-    view_mode = request.GET.get('view', 'room')  # 'room' or 'teacher'
+    view_mode = request.GET.get('view', 'teacher')  # 'room' or 'teacher'
     
     # Get filter parameters
     room_filter = request.GET.get('room_id')

@@ -412,6 +412,11 @@ class TeacherForm(forms.ModelForm):
             self.add_error('session_rate', "Le tarif par session est requis pour ce mode de paiement.")
         return cleaned_data
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if not self.instance.pk:
+            self.fields['is_active'].initial = True
+
 
 class LevelCategoryForm(forms.ModelForm):
     """Form for creating and editing level categories"""
