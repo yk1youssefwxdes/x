@@ -21,25 +21,41 @@ _WILDCARD_FINGERPRINT: Final[str] = "*"                        # matches any dev
 _ERROR_MESSAGE: Final[str] = "This copy of the application is not licensed for this device."
 
 
+from .paths import get_license_file_path, get_base_dir, get_licenses_dir, get_data_dir
+
+
 def _load_license_data() -> dict:
-    license_path = get_license_file_path()
-    if not license_path.exists():
-        _die("License file missing.")
+    candidate_paths = [
+        get_licenses_dir() / "license.enc",
+        get_data_dir() / "license.enc",
+        get_base_dir() / "license.enc",
+    ]
 
     secret_key = get_license_secret()
     extra_secret = os.getenv(_LICENSE_EXTRA_SECRET_ENV, "")
     if extra_secret:
         secret_key += extra_secret
 
-    try:
-        data = decrypt_license_file(license_path, secret_key)
-    except Exception:
-        _die("Invalid license file.")
+    for license_path in candidate_paths:
+        if not license_path.is_file():
+            continue
+        try:
+            data = decrypt_license_file(license_path, secret_key)
+            if isinstance(data, dict):
+                # If wildcard license, accept immediately
+                if data.get("LICENSED_FINGERPRINT") == _WILDCARD_FINGERPRINT:
+                    return data
+                # Otherwise keep as candidate
+                valid_candidate = data
+        except Exception:
+            continue
 
-    if not isinstance(data, dict):
-        _die("Invalid license content.")
+    # Return valid candidate if found
+    if "valid_candidate" in locals():
+        return valid_candidate
 
-    return data
+    # If no file decrypted successfully, die
+    _die("License file missing or invalid.")
 
 
 def _die(message: str = _ERROR_MESSAGE) -> None:
