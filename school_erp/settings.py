@@ -15,6 +15,7 @@ from django.templatetags.static import static
 from django.urls import reverse_lazy
 import os
 import secrets
+import dj_database_url
 
 from core.paths import (
     get_base_dir,
@@ -318,53 +319,51 @@ WSGI_APPLICATION = 'school_erp.wsgi.application'
 
 # Database
 # https://docs.djangoproject.com/en/6.0/ref/settings/#databases
-
-# ── Phase 2: SQLite WAL Mode & Concurrency Configuration ────────────────────
 #
-# WAL (Write-Ahead Logging) allows concurrent readers while a writer is active,
-# which significantly reduces "database is locked" errors in LAN multi-user
-# scenarios.
+# ── Database selection ───────────────────────────────────────────────────────
+# Production (cloud):  set DATABASE_URL to a PostgreSQL connection string, e.g.
+#   DATABASE_URL=postgres://user:password@host:5432/dbname
+#   dj-database-url parses it and configures Django automatically.
 #
-# PRAGMA notes:
-#   journal_mode=WAL    — enables WAL; persisted in the database file header.
-#                         SQLite may create db.sqlite3-wal and db.sqlite3-shm
-#                         sidecar files during normal operation; do not delete them.
-#   synchronous=NORMAL  — sufficient durability for WAL mode; FULL is the
-#                         default for rollback-journal mode and is unnecessarily
-#                         conservative under WAL.
-#   busy_timeout=30000  — SQLite C-level wait (milliseconds) before raising
-#                         OperationalError when another connection holds a write
-#                         lock. Complements OPTIONS["timeout"] (see below).
-#
-# OPTIONS["timeout"] = 30:
-#   Passed to sqlite3.connect(timeout=30). Python's sqlite3 module maps this
-#   to SQLite's busy_timeout internally (30 s → 30 000 ms). The explicit
-#   PRAGMA busy_timeout in init_command is redundant in current CPython but
-#   makes the intent self-documenting and guards against future Python changes.
-#
-# WAL does NOT eliminate all locking: concurrent writers still queue (SQLite
-# uses a single-writer model). WAL improves read/write concurrency, not
-# write/write concurrency.
+# Local development:   leave DATABASE_URL unset → SQLite with WAL mode.
 # ─────────────────────────────────────────────────────────────────────────────
-DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': get_database_path(),
-        "OPTIONS": {
-            # Python-level connection timeout (seconds).
-            # sqlite3.connect(timeout=30) also internally sets SQLite's
-            # busy_timeout to 30 000 ms via CPython's implementation.
-            "timeout": 30,
-            # PRAGMAs executed by Django after every new connection is opened.
-            # Django splits this string on ";" and executes each non-empty part.
-            "init_command": (
-                "PRAGMA journal_mode=WAL;"
-                "PRAGMA synchronous=NORMAL;"
-                "PRAGMA busy_timeout=30000;"
-            ),
-        },
+
+_DATABASE_URL = os.environ.get("DATABASE_URL", "")
+
+if _DATABASE_URL:
+    # ── PostgreSQL (production) ──────────────────────────────────────────────
+    DATABASES = {
+        "default": dj_database_url.parse(
+            _DATABASE_URL,
+            conn_max_age=600,       # keep connections alive for 10 min
+            conn_health_checks=True,
+        )
     }
-}
+else:
+    # ── SQLite + WAL mode (local development) ───────────────────────────────
+    #
+    # WAL (Write-Ahead Logging) allows concurrent readers while a writer is
+    # active, which significantly reduces "database is locked" errors in LAN
+    # multi-user scenarios.
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.sqlite3',
+            'NAME': get_database_path(),
+            "OPTIONS": {
+                # Python-level connection timeout (seconds).
+                "timeout": 30,
+                # PRAGMAs run after every new connection:
+                #   journal_mode=WAL    — enables WAL mode.
+                #   synchronous=NORMAL  — sufficient durability under WAL.
+                #   busy_timeout=30000  — wait up to 30 s before raising error.
+                "init_command": (
+                    "PRAGMA journal_mode=WAL;"
+                    "PRAGMA synchronous=NORMAL;"
+                    "PRAGMA busy_timeout=30000;"
+                ),
+            },
+        }
+    }
 
 
 # Password validation
