@@ -98,20 +98,24 @@ async function processNextAction() {
 }
 
 /**
- * Remove stale Chrome singleton locks if and only if no browser process is running.
+ * Remove stale Chrome lock/port files left behind by unclean shutdowns.
+ * Puppeteer will refuse to launch if any of these are present.
  */
 function cleanStaleBrowserLocks() {
+    const STALE_FILES = ['SingletonLock', 'SingletonCookie', 'DevToolsActivePort'];
     try {
         const sessionPath = path.join(sessionDataPath, 'session');
         if (fs.existsSync(sessionPath)) {
-            const lockFile = path.join(sessionPath, 'SingletonLock');
-            if (fs.existsSync(lockFile)) {
-                log('info', `Removing stale SingletonLock file at ${lockFile}`);
-                fs.unlinkSync(lockFile);
+            for (const fileName of STALE_FILES) {
+                const filePath = path.join(sessionPath, fileName);
+                if (fs.existsSync(filePath)) {
+                    log('info', `Removing stale ${fileName} at ${filePath}`);
+                    fs.unlinkSync(filePath);
+                }
             }
         }
     } catch (e) {
-        log('warn', `Could not clean lock file: ${e.message}`);
+        log('warn', `Could not clean lock files: ${e.message}`);
     }
 }
 
@@ -152,6 +156,7 @@ async function initializeNewClient() {
     if (clientStatus === 'SHUTTING_DOWN') return;
 
     await destroyCurrentClient();
+    cleanStaleBrowserLocks();
 
     setStatus('STARTING');
     qrCodeData = null;

@@ -861,7 +861,9 @@ class ServerApp:
         self._thread_log("Loading Django & Waitress handlers...")
 
         try:
+            import os
             import django
+            os.environ.setdefault("DJANGO_SETTINGS_MODULE", "school_erp.settings")
             django.setup()
             from django.core.management import call_command
             from core.paths import get_database_path
@@ -878,7 +880,7 @@ class ServerApp:
         except Exception as exc:
             self._thread_log(f"ERROR: Failed to load Django/Waitress: {exc}")
             if self._is_valid_session(session):
-                self.root.after(0, lambda: self._handle_session_failure(session, f"Django error: {exc}"))
+                self.root.after(0, lambda exc=exc: self._handle_session_failure(session, f"Django error: {exc}"))
             return
 
         if not self._is_valid_session(session):
