@@ -356,16 +356,23 @@ _DATABASE_URL = (
     or os.environ.get("DATABASE_PUBLIC_URL")
     or os.environ.get("PGDATABASE_URL")
     or ""
-)
+).strip()
 
-if _DATABASE_URL:
-    # ── PostgreSQL (production) ──────────────────────────────────────────────
-    DATABASES = {
-        "default": dj_database_url.parse(
+_parsed_db = None
+if _DATABASE_URL and "://" in _DATABASE_URL and not _DATABASE_URL.startswith("://"):
+    try:
+        _parsed_db = dj_database_url.parse(
             _DATABASE_URL,
             conn_max_age=600,       # keep connections alive for 10 min
             conn_health_checks=True,
         )
+    except Exception:
+        _parsed_db = None
+
+if _parsed_db:
+    # ── PostgreSQL / External Database (production) ───────────────────────────
+    DATABASES = {
+        "default": _parsed_db
     }
 else:
     # ── SQLite + WAL mode (local development) ───────────────────────────────
