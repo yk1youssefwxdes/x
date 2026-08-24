@@ -112,9 +112,13 @@ STORAGES = {
         "BACKEND": "django.core.files.storage.FileSystemStorage",
     },
     "staticfiles": {
-        "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
+        "BACKEND": "whitenoise.storage.CompressedStaticFilesStorage",
     },
 }
+
+# Ensure missing static assets never crash template rendering
+WHITENOISE_MANIFEST_STRICT = False
+
 
 
 
