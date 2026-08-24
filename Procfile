@@ -1,3 +1,3 @@
-web: gunicorn school_erp.wsgi --bind 0.0.0.0:${PORT:-8000} --workers 2 --log-file -
-worker: cd whatsapp_service && node server.js
-release: python manage.py migrate --noinput && python manage.py initadmin && python manage.py collectstatic --noinput && cd whatsapp_service && npm install --omit=dev
+web: bash scripts/start.sh
+release: python manage.py migrate --noinput && python manage.py initadmin && python manage.py load_demo_data && python manage.py collectstatic --noinput && cd whatsapp_service && npm install --omit=dev
+
