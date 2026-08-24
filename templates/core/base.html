@@ -41,8 +41,10 @@
 
       /* Text — WCAG AA compliant contrast ratios on white surface */
       --text-primary: #111827;
-      --text-secondary: #4b5563;  /* 7.0:1 on white — passes AA */
-      --text-muted: #6b7280;      /* 4.6:1 on white — passes AA */
+      --text-secondary: #4b5563;
+      /* 7.0:1 on white — passes AA */
+      --text-muted: #6b7280;
+      /* 4.6:1 on white — passes AA */
 
       /* Status */
       --success: #10b981;
@@ -103,7 +105,8 @@
     button:focus-visible,
     .nav-item-link:focus-visible,
     .mobile-menu-btn:focus-visible {
-      outline: 3px solid #2563eb;  /* bolder, higher-contrast focus ring */
+      outline: 3px solid #2563eb;
+      /* bolder, higher-contrast focus ring */
       outline-offset: 2px;
     }
 
@@ -179,9 +182,11 @@
       align-items: center;
       gap: 7px;
       padding: 7px 13px;
-      min-height: 44px;            /* WCAG 2.5.5 — 44px touch target */
+      min-height: 44px;
+      /* WCAG 2.5.5 — 44px touch target */
       border-radius: var(--radius-sm);
-      color: rgba(255, 255, 255, 0.9);  /* ↑ from 0.72 — passes AA on dark bg */
+      color: rgba(255, 255, 255, 0.9);
+      /* ↑ from 0.72 — passes AA on dark bg */
       text-decoration: none;
       font-size: 15px;
       font-weight: 500;
@@ -356,7 +361,8 @@
     .navbar-clock {
       font-size: 14.5px;
       font-weight: 500;
-      color: rgba(255, 255, 255, 0.85);  /* ↑ from 0.6 — passes AA on dark bg */
+      color: rgba(255, 255, 255, 0.85);
+      /* ↑ from 0.6 — passes AA on dark bg */
       display: flex;
       align-items: center;
       gap: 5px;
@@ -370,9 +376,11 @@
     }
 
     .navbar-search-input {
-      height: 44px;                         /* WCAG 2.5.5 — 44px touch target */
+      height: 44px;
+      /* WCAG 2.5.5 — 44px touch target */
       width: 240px;
-      border: 1px solid rgba(255, 255, 255, 0.45);  /* ↑ from 0.18 — more visible */
+      border: 1px solid rgba(255, 255, 255, 0.45);
+      /* ↑ from 0.18 — more visible */
       border-radius: var(--radius-sm);
       background: rgba(255, 255, 255, 0.1);
       padding-left: 32px;
@@ -383,7 +391,8 @@
     }
 
     .navbar-search-input::placeholder {
-      color: rgba(255, 255, 255, 0.65);  /* ↑ from 0.38 — passes AA */
+      color: rgba(255, 255, 255, 0.65);
+      /* ↑ from 0.38 — passes AA */
       font-size: 13.5px;
     }
 
@@ -400,7 +409,8 @@
       left: 10px;
       top: 50%;
       transform: translateY(-50%);
-      color: rgba(255, 255, 255, 0.7);  /* ↑ from 0.4 — more visible */
+      color: rgba(255, 255, 255, 0.7);
+      /* ↑ from 0.4 — more visible */
       font-size: 14px;
       pointer-events: none;
     }
@@ -459,11 +469,13 @@
       align-items: center;
       gap: 6px;
       padding: 6px 11px;
-      min-height: 44px;                          /* WCAG 2.5.5 */
+      min-height: 44px;
+      /* WCAG 2.5.5 */
       border-radius: var(--radius-sm);
       background: rgba(255, 255, 255, 0.08);
       border: 1px solid rgba(255, 255, 255, 0.12);
-      color: rgba(255, 255, 255, 0.9);           /* ↑ from 0.7 — passes AA */
+      color: rgba(255, 255, 255, 0.9);
+      /* ↑ from 0.7 — passes AA */
       text-decoration: none;
       font-size: 14.5px;
       font-weight: 500;
@@ -481,9 +493,11 @@
       background: rgba(255, 255, 255, 0.08);
       border: 1px solid rgba(255, 255, 255, 0.12);
       border-radius: var(--radius-sm);
-      color: rgba(255, 255, 255, 0.9);  /* ↑ from 0.8 */
+      color: rgba(255, 255, 255, 0.9);
+      /* ↑ from 0.8 */
       padding: 6px 10px;
-      min-height: 44px;                /* WCAG 2.5.5 */
+      min-height: 44px;
+      /* WCAG 2.5.5 */
       font-size: 20px;
       cursor: pointer;
       transition: background 0.15s;
@@ -519,8 +533,15 @@
     }
 
     @keyframes drawer-slide-in {
-      from { opacity: 0; transform: translateY(-10px); }
-      to   { opacity: 1; transform: translateY(0); }
+      from {
+        opacity: 0;
+        transform: translateY(-10px);
+      }
+
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
     }
 
     .mobile-nav-link {
@@ -528,9 +549,11 @@
       align-items: center;
       gap: 10px;
       padding: 10px 12px;
-      min-height: 44px;                /* WCAG 2.5.5 */
+      min-height: 44px;
+      /* WCAG 2.5.5 */
       border-radius: var(--radius-sm);
-      color: rgba(255, 255, 255, 0.9);  /* ↑ from 0.75 — passes AA */
+      color: rgba(255, 255, 255, 0.9);
+      /* ↑ from 0.75 — passes AA */
       text-decoration: none;
       font-size: 16px;
       font-weight: 500;
@@ -558,7 +581,8 @@
       font-weight: 600;
       letter-spacing: 0.08em;
       text-transform: uppercase;
-      color: rgba(255, 255, 255, 0.7);  /* ↑ from 0.35 — passes AA */
+      color: rgba(255, 255, 255, 0.7);
+      /* ↑ from 0.35 — passes AA */
       padding: 8px 12px 2px;
     }
 
@@ -773,11 +797,14 @@
 
     .badge-secondary {
       background: #f3f4f6;
-      color: #374151;  /* ↑ from #6b7280 — 7.5:1 on #f3f4f6 — passes AA */
+      color: #374151;
+      /* ↑ from #6b7280 — 7.5:1 on #f3f4f6 — passes AA */
     }
 
     /* ─── Utility ─────────────────────────────────────────────────── */
-    .fw-600 { font-weight: 600 !important; }
+    .fw-600 {
+      font-weight: 600 !important;
+    }
 
     /* ─── Buttons ────────────────────────────────────────────────── */
     .btn {
@@ -786,7 +813,8 @@
       font-weight: 500;
       border-radius: var(--radius-sm);
       padding: 7px 14px;
-      min-height: 44px;          /* WCAG 2.5.5 — 44px touch target */
+      min-height: 44px;
+      /* WCAG 2.5.5 — 44px touch target */
       transition: all 0.15s;
       display: inline-flex;
       align-items: center;
@@ -867,8 +895,10 @@
 
     .btn-sm {
       font-size: 14px;
-      padding: 8px 12px;  /* balanced aesthetics + accessibility */
-      min-height: 40px;   /* WCAG 2.5.5 — close to target without inflating layout */
+      padding: 8px 12px;
+      /* balanced aesthetics + accessibility */
+      min-height: 40px;
+      /* WCAG 2.5.5 — close to target without inflating layout */
       border-radius: 6px;
     }
 
@@ -888,10 +918,12 @@
     .form-control,
     .form-select {
       font-size: 15.5px;
-      border: 2px solid #71717a;  /* explicit high-visibility border — WCAG 1.4.11 */
+      border: 2px solid #71717a;
+      /* explicit high-visibility border — WCAG 1.4.11 */
       border-radius: var(--radius-sm);
       padding: 8px 12px;
-      min-height: 44px;           /* WCAG 2.5.5 — 44px touch target */
+      min-height: 44px;
+      /* WCAG 2.5.5 — 44px touch target */
       background: var(--surface);
       color: var(--text-primary);
       transition: border-color 0.15s, box-shadow 0.15s;
@@ -922,7 +954,8 @@
       border-radius: var(--radius-sm) !important;
       color: var(--text-secondary);
       padding: 5px 10px;
-      min-height: 44px;    /* WCAG 2.5.5 */
+      min-height: 44px;
+      /* WCAG 2.5.5 */
       display: inline-flex;
       align-items: center;
       transition: all 0.15s;
@@ -1303,11 +1336,13 @@
         bottom: 18px;
         right: 16px;
       }
+
       .fab-payment {
         width: 50px;
         height: 50px;
         font-size: 21px;
       }
+
       .fab-label {
         display: none;
       }
@@ -1346,9 +1381,13 @@
 
     /* 1500px — tighter spacing to prevent overflow on medium screens */
     @media (max-width: 1500px) {
-      .top-navbar { padding: 0 16px; }
+      .top-navbar {
+        padding: 0 16px;
+      }
 
-      .navbar-brand-link { margin-right: 12px; }
+      .navbar-brand-link {
+        margin-right: 12px;
+      }
 
       .nav-item-link {
         padding: 7px 8px;
@@ -1361,6 +1400,7 @@
       .navbar-search-input {
         width: 180px;
       }
+
       .navbar-search-input:focus {
         width: 200px;
       }
@@ -1422,12 +1462,15 @@
       display: none;
       align-items: center;
       justify-content: center;
-      width: 44px;   /* ↑ from 34px — WCAG 2.5.5 */
-      height: 44px;  /* ↑ from 34px — WCAG 2.5.5 */
+      width: 44px;
+      /* ↑ from 34px — WCAG 2.5.5 */
+      height: 44px;
+      /* ↑ from 34px — WCAG 2.5.5 */
       border-radius: var(--radius-sm);
       background: rgba(255, 255, 255, 0.08);
       border: 1px solid rgba(255, 255, 255, 0.12);
-      color: rgba(255, 255, 255, 0.9);  /* ↑ from 0.75 — passes AA */
+      color: rgba(255, 255, 255, 0.9);
+      /* ↑ from 0.75 — passes AA */
       cursor: pointer;
       font-size: 17px;
       transition: background 0.15s;
@@ -1441,7 +1484,9 @@
 
     /* 576px — smallest screens */
     @media (max-width: 576px) {
-      .top-navbar { padding: 0 12px; }
+      .top-navbar {
+        padding: 0 12px;
+      }
 
       .page-content {
         padding: 16px 14px;
@@ -1622,8 +1667,8 @@
           <i class="bi bi-calendar2-event-fill" aria-hidden="true"></i>
           <span class="nav-label-text">Sessions du jour</span>
           {% if past_uncompleted_count %}
-            <span class="nav-badge-danger nav-badge-sm">{{ past_uncompleted_count }}</span>
-            <span class="visually-hidden">séances passées non traitées</span>
+          <span class="nav-badge-danger nav-badge-sm">{{ past_uncompleted_count }}</span>
+          <span class="visually-hidden">séances passées non traitées</span>
           {% endif %}
         </a>
 
@@ -1631,14 +1676,15 @@
 
         <!-- Planification Dropdown -->
         <div class="nav-dropdown">
-          <button type="button" class="nav-item-link {% active_if 'sessions_schedule' 'sessions_monthly' 'schedule_conflicts' 'session_exceptions_list' 'attendance_report' 'create_makeup_session' %}"
+          <button type="button"
+            class="nav-item-link {% active_if 'sessions_schedule' 'sessions_monthly' 'schedule_conflicts' 'session_exceptions_list' 'attendance_report' 'create_makeup_session' %}"
             title="Planification" aria-haspopup="true" aria-expanded="false" aria-controls="planning-menu">
             <i class="bi bi-calendar3" aria-hidden="true"></i>
             <span class="nav-label-text">Planning</span>
             <i class="bi bi-chevron-down" style="font-size: 0.9em;" aria-hidden="true"></i>
             {% if conflict_count > 0 %}
-              <span class="nav-badge-danger nav-badge-sm">{{ conflict_count }}</span>
-              <span class="visually-hidden">conflits en attente</span>
+            <span class="nav-badge-danger nav-badge-sm">{{ conflict_count }}</span>
+            <span class="visually-hidden">conflits en attente</span>
             {% endif %}
           </button>
           <div class="nav-dropdown-menu" id="planning-menu">
@@ -1648,24 +1694,27 @@
             <a class="nav-dropdown-item {% active_if 'sessions_monthly' %}" href="{% url 'core:sessions_monthly' %}">
               <i class="bi bi-calendar-month-fill" style="color: var(--info);" aria-hidden="true"></i> Vue mensuelle
             </a>
-            <a class="nav-dropdown-item {% active_if 'schedule_conflicts' %}" href="{% url 'core:schedule_conflicts' %}">
+            <a class="nav-dropdown-item {% active_if 'schedule_conflicts' %}"
+              href="{% url 'core:schedule_conflicts' %}">
               <i class="bi bi-exclamation-triangle-fill" style="color: var(--warning);" aria-hidden="true"></i>
               Conflits d'horaires
               {% if conflict_count > 0 %}
-                <span class="nav-badge-danger">{{ conflict_count }}</span>
-                <span class="visually-hidden">conflits en attente</span>
+              <span class="nav-badge-danger">{{ conflict_count }}</span>
+              <span class="visually-hidden">conflits en attente</span>
               {% endif %}
             </a>
-            <a class="nav-dropdown-item {% active_if 'session_exceptions_list' %}" href="{% url 'core:session_exceptions_list' %}">
+            <a class="nav-dropdown-item {% active_if 'session_exceptions_list' %}"
+              href="{% url 'core:session_exceptions_list' %}">
               <i class="bi bi-slash-circle" style="color: var(--danger);" aria-hidden="true"></i> Exceptions de séances
             </a>
-            
+
           </div>
         </div>
 
         <!-- Pédagogie & RH Dropdown -->
         <div class="nav-dropdown">
-          <button type="button" class="nav-item-link {% active_if 'courses_list' 'levels_list' 'level_categories_list' 'teachers_list' 'teacher_detail' 'rooms_list' 'teacher_payroll' %}"
+          <button type="button"
+            class="nav-item-link {% active_if 'courses_list' 'levels_list' 'level_categories_list' 'teachers_list' 'teacher_detail' 'rooms_list' 'teacher_payroll' %}"
             title="Pédagogie" aria-haspopup="true" aria-expanded="false" aria-controls="pedagogie-menu">
             <i class="bi bi-mortarboard-fill" aria-hidden="true"></i>
             <span class="nav-label-text">Pédagogie</span>
@@ -1678,11 +1727,13 @@
             <a class="nav-dropdown-item {% active_if 'levels_list' %}" href="{% url 'core:levels_list' %}">
               <i class="bi bi-layers-fill" style="color: var(--info);" aria-hidden="true"></i> Niveaux scolaires
             </a>
-            {% comment %} <a class="nav-dropdown-item {% active_if 'level_categories_list' %}" href="{% url 'core:level_categories_list' %}">
+            {% comment %} <a class="nav-dropdown-item {% active_if 'level_categories_list' %}"
+              href="{% url 'core:level_categories_list' %}">
               <i class="bi bi-diagram-3-fill" style="color: #6366f1;" aria-hidden="true"></i> Catégories de niveaux
             </a> {% endcomment %}
             <div class="dropdown-divider"></div>
-            <a class="nav-dropdown-item {% active_if 'teachers_list' 'teacher_detail' %}" href="{% url 'core:teachers_list' %}">
+            <a class="nav-dropdown-item {% active_if 'teachers_list' 'teacher_detail' %}"
+              href="{% url 'core:teachers_list' %}">
               <i class="bi bi-person-workspace" style="color: var(--success);" aria-hidden="true"></i> Professeurs
             </a>
             {% comment %} <a class="nav-dropdown-item {% active_if 'rooms_list' %}" href="{% url 'core:rooms_list' %}">
@@ -1692,7 +1743,8 @@
               <i class="bi bi-calculator-fill" style="color: var(--danger);" aria-hidden="true"></i> Paie professeurs
             </a>
             <a class="nav-dropdown-item {% active_if 'attendance_report' %}" href="{% url 'core:attendance_report' %}">
-              <i class="bi bi-clipboard2-check-fill" style="color: var(--success);" aria-hidden="true"></i> Rapport de présence
+              <i class="bi bi-clipboard2-check-fill" style="color: var(--success);" aria-hidden="true"></i> Rapport de
+              présence
             </a>
           </div>
         </div>
@@ -1703,9 +1755,11 @@
           href="{% url 'core:whatsapp_dashboard' %}" title="WhatsApp Dashboard" id="whatsappBtn">
           <i class="bi bi-whatsapp" style="position: relative;" aria-hidden="true">
             {% if whatsapp_connected %}
-            <span style="position: absolute; top: -1px; right: -2px; width: 7px; height: 7px; background-color: #25d366; border-radius: 50%; display: inline-block;"></span>
+            <span
+              style="position: absolute; top: -1px; right: -2px; width: 7px; height: 7px; background-color: #25d366; border-radius: 50%; display: inline-block;"></span>
             {% else %}
-            <span style="position: absolute; top: -1px; right: -2px; width: 7px; height: 7px; background-color: #9ca3af; border-radius: 50%; display: inline-block;"></span>
+            <span
+              style="position: absolute; top: -1px; right: -2px; width: 7px; height: 7px; background-color: #9ca3af; border-radius: 50%; display: inline-block;"></span>
             {% endif %}
           </i>
           <span class="nav-label-text">WhatsApp</span>
@@ -1713,7 +1767,8 @@
         </a>
 
         {% if user.is_staff %}
-        <a class="nav-item-link {% active_if 'system_settings' %}" href="{% url 'core:system_settings' %}" title="Paramètres du système">
+        <a class="nav-item-link {% active_if 'system_settings' %}" href="{% url 'core:system_settings' %}"
+          title="Paramètres du système">
           <i class="bi bi-sliders" aria-hidden="true"></i>
           <span class="nav-label-text">Paramètres</span>
         </a>
@@ -1722,37 +1777,45 @@
 
         <!-- Analytiques & Rapports Dropdown -->
         {% comment %} <div class="nav-dropdown">
-          <button type="button" class="nav-item-link {% active_if 'analytics_dashboard' 'analytics_revenue' 'analytics_attendance' 'analytics_students' 'analytics_rooms' 'analytics_teachers' 'analytics_operational' 'admin_statistics' %}"
+          <button type="button"
+            class="nav-item-link {% active_if 'analytics_dashboard' 'analytics_revenue' 'analytics_attendance' 'analytics_students' 'analytics_rooms' 'analytics_teachers' 'analytics_operational' 'admin_statistics' %}"
             title="Analytiques & Rapports" aria-haspopup="true" aria-expanded="false" aria-controls="analytics-menu">
             <i class="bi bi-bar-chart-line-fill" aria-hidden="true"></i>
             <span class="nav-label-text">Analytiques</span>
             <i class="bi bi-chevron-down" style="font-size: 0.9em;" aria-hidden="true"></i>
           </button>
           <div class="nav-dropdown-menu" id="analytics-menu">
-            <a class="nav-dropdown-item {% active_if 'analytics_dashboard' %}" href="{% url 'core:analytics_dashboard' %}">
+            <a class="nav-dropdown-item {% active_if 'analytics_dashboard' %}"
+              href="{% url 'core:analytics_dashboard' %}">
               <i class="bi bi-speedometer2" style="color: var(--primary);" aria-hidden="true"></i> Cockpit Directeur
             </a>
             <a class="nav-dropdown-item {% active_if 'analytics_revenue' %}" href="{% url 'core:analytics_revenue' %}">
               <i class="bi bi-cash-stack" style="color: var(--success);" aria-hidden="true"></i> Analyse de revenus
             </a>
-            <a class="nav-dropdown-item {% active_if 'analytics_attendance' %}" href="{% url 'core:analytics_attendance' %}">
+            <a class="nav-dropdown-item {% active_if 'analytics_attendance' %}"
+              href="{% url 'core:analytics_attendance' %}">
               <i class="bi bi-person-x-fill" style="color: var(--danger);" aria-hidden="true"></i> Suivi des absences
             </a>
-            <a class="nav-dropdown-item {% active_if 'analytics_students' %}" href="{% url 'core:analytics_students' %}">
-              <i class="bi bi-person-bounding-box" style="color: var(--info);" aria-hidden="true"></i> Rétention & départs
+            <a class="nav-dropdown-item {% active_if 'analytics_students' %}"
+              href="{% url 'core:analytics_students' %}">
+              <i class="bi bi-person-bounding-box" style="color: var(--info);" aria-hidden="true"></i> Rétention &
+              départs
             </a>
             <a class="nav-dropdown-item {% active_if 'analytics_rooms' %}" href="{% url 'core:analytics_rooms' %}">
               <i class="bi bi-house-door" style="color: #6366f1;" aria-hidden="true"></i> Occupation des salles
             </a>
-            <a class="nav-dropdown-item {% active_if 'analytics_teachers' %}" href="{% url 'core:analytics_teachers' %}">
+            <a class="nav-dropdown-item {% active_if 'analytics_teachers' %}"
+              href="{% url 'core:analytics_teachers' %}">
               <i class="bi bi-calculator" style="color: #10b981;" aria-hidden="true"></i> Paie enseignants
             </a>
-            <a class="nav-dropdown-item {% active_if 'analytics_operational' %}" href="{% url 'core:analytics_operational' %}">
+            <a class="nav-dropdown-item {% active_if 'analytics_operational' %}"
+              href="{% url 'core:analytics_operational' %}">
               <i class="bi bi-activity" style="color: var(--warning);" aria-hidden="true"></i> Santé opérationnelle
             </a>
             <div class="dropdown-divider"></div>
             <a class="nav-dropdown-item {% active_if 'admin_statistics' %}" href="{% url 'core:admin_statistics' %}">
-              <i class="bi bi-graph-up" style="color: var(--text-secondary);" aria-hidden="true"></i> Statistiques générales
+              <i class="bi bi-graph-up" style="color: var(--text-secondary);" aria-hidden="true"></i> Statistiques
+              générales
             </a>
           </div>
         </div> {% endcomment %}
@@ -1765,8 +1828,9 @@
         <div class="navbar-search">
           <i class="bi bi-search navbar-search-icon" aria-hidden="true"></i>
           <label for="global-search" class="visually-hidden">Rechercher un élève</label>
-          <input type="text" id="global-search" class="navbar-search-input" placeholder="Ctrl+K — Rechercher…" autocomplete="off"
-            role="combobox" aria-expanded="false" aria-controls="global-search-results" aria-autocomplete="list">
+          <input type="text" id="global-search" class="navbar-search-input" placeholder="Ctrl+K — Rechercher…"
+            autocomplete="off" role="combobox" aria-expanded="false" aria-controls="global-search-results"
+            aria-autocomplete="list">
           <div id="global-search-results" class="navbar-search-results" role="listbox"></div>
         </div>
 
@@ -1778,8 +1842,7 @@
 
         <!-- Admin shortcut (staff only) -->
         {% if user.is_staff %}
-        <a class="navbar-admin-link" href="/admin/" target="_blank" rel="noopener noreferrer"
-          title="Administration">
+        <a class="navbar-admin-link" href="/admin/" target="_blank" rel="noopener noreferrer" title="Administration">
           <i class="bi bi-gear-fill" aria-hidden="true"></i>
           <span class="nav-label-text">Admin</span>
         </a>
@@ -1810,7 +1873,7 @@
         href="{% url 'core:sessions_today' %}">
         <i class="bi bi-calendar2-event-fill" aria-hidden="true"></i> Sessions du jour
         {% if past_uncompleted_count %}
-          <span class="nav-badge-danger nav-badge-sm">{{ past_uncompleted_count }}</span>
+        <span class="nav-badge-danger nav-badge-sm">{{ past_uncompleted_count }}</span>
         {% endif %}
       </a>
 
@@ -1824,10 +1887,11 @@
       <a class="mobile-nav-link {% active_if 'schedule_conflicts' %}" href="{% url 'core:schedule_conflicts' %}">
         <i class="bi bi-exclamation-triangle-fill" aria-hidden="true"></i> Conflits d'horaires
         {% if conflict_count > 0 %}
-          <span class="nav-badge-danger nav-badge-sm">{{ conflict_count }}</span>
+        <span class="nav-badge-danger nav-badge-sm">{{ conflict_count }}</span>
         {% endif %}
       </a>
-      <a class="mobile-nav-link {% active_if 'session_exceptions_list' %}" href="{% url 'core:session_exceptions_list' %}">
+      <a class="mobile-nav-link {% active_if 'session_exceptions_list' %}"
+        href="{% url 'core:session_exceptions_list' %}">
         <i class="bi bi-slash-circle" aria-hidden="true"></i> Exceptions de séances
       </a>
       <a class="mobile-nav-link {% active_if 'attendance_report' %}" href="{% url 'core:attendance_report' %}">
@@ -1940,9 +2004,8 @@
       <footer class="app-footer">
         <div style="margin-bottom: 4px;">&copy; {% now "Y" %} {{ SCHOOL_NAME }} — Système de Gestion Scolaire</div>
         <div style="font-size: 11px; opacity: 0.8;">
-          Construit par <strong style="color: var(--primary);">Youssef Kotari</strong> &amp; <strong
-            style="color: var(--primary);">Yahya El-Hachimi</strong> · Développeur: <a href="tel:0661345595"
-            style="color: var(--primary); text-decoration: none; font-weight: 600;">0661345595</a>
+          Construit par <strong style="color: var(--primary);">Youssef Kotari</strong> &amp; · Développeur: <a
+            href="tel:0715125245" style="color: var(--primary); text-decoration: none; font-weight: 600;">0715125245</a>
         </div>
       </footer>
 
