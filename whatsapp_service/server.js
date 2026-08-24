@@ -4,15 +4,49 @@ const qrcode = require('qrcode');
 const path = require('path');
 const fs = require('fs');
 
+const { execSync } = require('child_process');
+
 const app = express();
 const port = Number(process.env.WA_PORT || 3000);
+const host = process.env.WA_HOST || '0.0.0.0';  // bind to all interfaces in cloud
 const API_KEY = process.env.WA_API_KEY || null;
 const sessionDataPath = process.env.WA_SESSION_DIR
     ? path.resolve(process.env.WA_SESSION_DIR)
     : path.join(__dirname, 'whatsapp_session');
-const customChromePath = process.env.CHROME_PATH || null;
+
+// Auto-discover Chromium: prefer explicit CHROME_PATH env var, then search PATH.
+// On Railway (Nixpacks), Chromium is on PATH but at a dynamic /nix/store/... path.
+function resolveChromePath() {
+    if (process.env.CHROME_PATH && fs.existsSync(process.env.CHROME_PATH)) {
+        return process.env.CHROME_PATH;
+    }
+    // Try common binary names in order
+    const candidates = ['chromium', 'chromium-browser', 'google-chrome-stable', 'google-chrome'];
+    for (const name of candidates) {
+        try {
+            const resolved = execSync(`which ${name}`, { stdio: ['pipe', 'pipe', 'pipe'] })
+                .toString()
+                .trim();
+            if (resolved && fs.existsSync(resolved)) {
+                return resolved;
+            }
+        } catch (_) {
+            // not found, try next
+        }
+    }
+    return null;  // let Puppeteer use its bundled Chromium
+}
+
+const customChromePath = resolveChromePath();
 const logDir = process.env.WA_LOG_DIR ? path.resolve(process.env.WA_LOG_DIR) : null;
 const SERVICE_VERSION = "1.0.0";
+
+// Log resolved Chrome path immediately so it's visible in deploy logs
+if (customChromePath) {
+    console.log(`[STARTUP] Chromium resolved at: ${customChromePath}`);
+} else {
+    console.log('[STARTUP] No system Chromium found — Puppeteer will use its bundled browser.');
+}
 
 // Ensure session directory exists
 try {
@@ -409,8 +443,8 @@ app.post('/restart', requireApiKey, async (req, res) => {
     });
 });
 
-app.listen(port, '127.0.0.1', () => {
-    log('info', `WhatsApp automation service listening at http://127.0.0.1:${port}`);
+app.listen(port, host, () => {
+    log('info', `WhatsApp automation service listening at http://${host}:${port}`);
     if (API_KEY) {
         log('info', 'API key authentication is ENABLED.');
     } else {

@@ -416,6 +416,11 @@ LOGOUT_REDIRECT_URL = '/admin/login/'
 WHATSAPP_API_KEY = os.environ.get('WA_API_KEY', '')
 WHATSAPP_SESSION_NOTIFICATIONS_ENABLED = True  # Set to True to enable WhatsApp session notifications
 WHATSAPP_SERVICE_PORT = os.environ.get("WA_PORT", 3000)
+# Host where the WhatsApp Node service is reachable from Django.
+# On single-container platforms (Railway, Render) both processes share the
+# same host, so localhost is correct.  On multi-container setups, set
+# WA_SERVICE_HOST to the internal service name or IP.
+WHATSAPP_SERVICE_HOST = os.environ.get("WA_SERVICE_HOST", "localhost")
 
 SESSION_EXPIRE_AT_BROWSER_CLOSE = True
 

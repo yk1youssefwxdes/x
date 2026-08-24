@@ -2689,7 +2689,7 @@ import urllib.error
 import json
 
 class WhatsAppServiceAPI:
-    BASE_URL = f"http://localhost:{settings.WHATSAPP_SERVICE_PORT}"
+    BASE_URL = f"http://{getattr(settings, 'WHATSAPP_SERVICE_HOST', 'localhost')}:{settings.WHATSAPP_SERVICE_PORT}"
 
     @classmethod
     def get_status(cls):
