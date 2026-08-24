@@ -14,6 +14,7 @@ from pathlib import Path
 from django.templatetags.static import static
 from django.urls import reverse_lazy
 import os
+import secrets
 
 from core.paths import (
     get_base_dir,
@@ -40,14 +41,24 @@ BASE_DIR = get_base_dir()
 # See https://docs.djangoproject.com/en/6.0/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'm9s0r9ex$&lg(4pk0t8lbh7nm#^u03j6q)v-y4z(!y4i-+hg*$nMvB5sLBZjeuZITYbn04kRPOllNzOh_HeI9UWs9qJfP5WkR33HQAAv3ltPLeZOV4QXA'
+# In production, set the SECRET_KEY environment variable to a strong random value.
+SECRET_KEY = os.environ.get(
+    'DJANGO_SECRET_KEY',
+    'm9s0r9ex$&lg(4pk0t8lbh7nm#^u03j6q)v-y4z(!y4i-+hg*$nMvB5sLBZjeuZITYbn04kRPOllNzOh_HeI9UWs9qJfP5WkR33HQAAv3ltPLeZOV4QXA'
+)
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+# Set DEBUG=False via environment variable in production.
+DEBUG = os.environ.get('DJANGO_DEBUG', 'True').lower() not in ('false', '0', 'no')
 
-ALLOWED_HOSTS = [
-    "*"
-]
+# Comma-separated list of allowed hosts, e.g. DJANGO_ALLOWED_HOSTS=mysite.com,www.mysite.com
+_raw_hosts = os.environ.get('DJANGO_ALLOWED_HOSTS', '*')
+ALLOWED_HOSTS = [h.strip() for h in _raw_hosts.split(',') if h.strip()]
+
+# Trusted origins for CSRF (required when served behind a proxy / on HTTPS).
+# e.g. DJANGO_CSRF_TRUSTED_ORIGINS=https://mysite.com,https://www.mysite.com
+_raw_csrf = os.environ.get('DJANGO_CSRF_TRUSTED_ORIGINS', '')
+CSRF_TRUSTED_ORIGINS = [o.strip() for o in _raw_csrf.split(',') if o.strip()]
 
 
 # Application definition
@@ -72,6 +83,16 @@ INSTALLED_APPS = [
 
     'core',
 ]
+
+STORAGES = {
+    "default": {
+        "BACKEND": "django.core.files.storage.FileSystemStorage",
+    },
+    "staticfiles": {
+        "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
+    },
+}
+
 
 
 # Settings for school center (configurable)
@@ -254,6 +275,9 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
+    # WhiteNoise must be placed directly after SecurityMiddleware so it can
+    # serve compressed static files efficiently before any other middleware.
+    'whitenoise.middleware.WhiteNoiseMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
@@ -397,6 +421,20 @@ WHATSAPP_SERVICE_PORT = os.environ.get("WA_PORT", 3000)
 SESSION_EXPIRE_AT_BROWSER_CLOSE = True
 
 SITE_ID = 1
+
+# ── Production HTTPS / security hardening ────────────────────────────────────
+# These are safe no-ops in development (DEBUG=True).  When you deploy with
+# DEBUG=False and HTTPS, they enforce secure cookies and tell browsers to only
+# ever connect over HTTPS (HSTS).  Leave them here; your hosting env controls
+# whether they are active via the DJANGO_DEBUG env variable.
+if not DEBUG:
+    SECURE_SSL_REDIRECT = True          # redirect all HTTP → HTTPS
+    SECURE_HSTS_SECONDS = 31536000      # 1 year HSTS header
+    SECURE_HSTS_INCLUDE_SUBDOMAINS = True
+    SECURE_HSTS_PRELOAD = True
+    SESSION_COOKIE_SECURE = True        # session cookie over HTTPS only
+    CSRF_COOKIE_SECURE = True           # CSRF cookie over HTTPS only
+    SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 
 # Production Logging Configuration
 LOGGING = {
