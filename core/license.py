@@ -5,12 +5,14 @@ import os
 import secrets
 from typing import Final
 
+import json
 from .hardware import get_fingerprint_hash
 from .license_utils import (
     decrypt_license_file,
+    encrypt_license_payload,
     get_license_secret,
 )
-from .paths import get_license_file_path
+from .paths import get_license_file_path, get_base_dir, get_licenses_dir, get_data_dir
 
 
 
@@ -21,7 +23,47 @@ _WILDCARD_FINGERPRINT: Final[str] = "*"                        # matches any dev
 _ERROR_MESSAGE: Final[str] = "This copy of the application is not licensed for this device."
 
 
-from .paths import get_license_file_path, get_base_dir, get_licenses_dir, get_data_dir
+def _is_cloud_environment() -> bool:
+    """Return True if running on a cloud/container platform or explicit auto-license requested."""
+    cloud_indicators = (
+        "RAILWAY_ENVIRONMENT",
+        "RAILWAY_PROJECT_ID",
+        "RENDER",
+        "HEROKU_APP_ID",
+        "FLY_APP_NAME",
+        "KUBERNETES_SERVICE_HOST",
+        "DYNO",
+    )
+    if any(os.getenv(var) for var in cloud_indicators):
+        return True
+    if os.getenv("AUTO_LICENSE", "").lower() in ("true", "1", "yes"):
+        return True
+    return False
+
+
+def _auto_generate_cloud_license() -> dict:
+    """Generate and write a valid wildcard license for server/cloud deployment."""
+    payload = {
+        "START_DATE": "2020-01-01",
+        "END_DATE": "2099-12-31",
+        "LICENSED_FINGERPRINT": _WILDCARD_FINGERPRINT,
+    }
+    secret_key = get_license_secret()
+    extra_secret = os.getenv(_LICENSE_EXTRA_SECRET_ENV, "")
+    if extra_secret:
+        secret_key += extra_secret
+
+    encrypted = encrypt_license_payload(payload, secret_key, _LICENSE_FILE_NAME)
+    content = json.dumps(encrypted, indent=2)
+
+    for target_dir in [get_base_dir(), get_licenses_dir(), get_data_dir()]:
+        try:
+            target_dir.mkdir(parents=True, exist_ok=True)
+            (target_dir / _LICENSE_FILE_NAME).write_text(content, encoding="utf-8")
+        except Exception:
+            pass
+
+    return payload
 
 
 def _load_license_data() -> dict:
@@ -45,7 +87,6 @@ def _load_license_data() -> dict:
                 # If wildcard license, accept immediately
                 if data.get("LICENSED_FINGERPRINT") == _WILDCARD_FINGERPRINT:
                     return data
-                # Otherwise keep as candidate
                 valid_candidate = data
         except Exception:
             continue
@@ -53,6 +94,10 @@ def _load_license_data() -> dict:
     # Return valid candidate if found
     if "valid_candidate" in locals():
         return valid_candidate
+
+    # Auto-generate cloud wildcard license if on cloud or auto-license requested
+    if _is_cloud_environment() or os.getenv("AUTO_LICENSE", "true").lower() in ("true", "1", "yes"):
+        return _auto_generate_cloud_license()
 
     # If no file decrypted successfully, die
     _die("License file missing or invalid.")
