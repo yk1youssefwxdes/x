@@ -33,4 +33,4 @@ cmds = [
 # The `worker` entry (WhatsApp Node service) must be added as a separate
 # Railway service or via the Procfile worker dyno.
 [start]
-cmd = "gunicorn school_erp.wsgi --workers 2 --log-file -"
+cmd = "gunicorn school_erp.wsgi --bind 0.0.0.0:${PORT:-8000} --workers 2 --log-file -"

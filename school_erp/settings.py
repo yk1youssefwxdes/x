@@ -17,6 +17,13 @@ import os
 import secrets
 import dj_database_url
 
+# Load environment variables from .env file if present
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass
+
 from core.paths import (
     get_base_dir,
     get_data_dir,
@@ -42,24 +49,39 @@ BASE_DIR = get_base_dir()
 # See https://docs.djangoproject.com/en/6.0/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-# In production, set the SECRET_KEY environment variable to a strong random value.
-SECRET_KEY = os.environ.get(
-    'DJANGO_SECRET_KEY',
-    'm9s0r9ex$&lg(4pk0t8lbh7nm#^u03j6q)v-y4z(!y4i-+hg*$nMvB5sLBZjeuZITYbn04kRPOllNzOh_HeI9UWs9qJfP5WkR33HQAAv3ltPLeZOV4QXA'
+# Supports both DJANGO_SECRET_KEY and SECRET_KEY
+SECRET_KEY = (
+    os.environ.get('DJANGO_SECRET_KEY')
+    or os.environ.get('SECRET_KEY')
+    or 'm9s0r9ex$&lg(4pk0t8lbh7nm#^u03j6q)v-y4z(!y4i-+hg*$nMvB5sLBZjeuZITYbn04kRPOllNzOh_HeI9UWs9qJfP5WkR33HQAAv3ltPLeZOV4QXA'
 )
 
 # SECURITY WARNING: don't run with debug turned on in production!
-# Set DEBUG=False via environment variable in production.
-DEBUG = os.environ.get('DJANGO_DEBUG', 'True').lower() not in ('false', '0', 'no')
+# Supports both DJANGO_DEBUG and DEBUG
+_raw_debug = os.environ.get('DJANGO_DEBUG') or os.environ.get('DEBUG')
+if _raw_debug is not None:
+    DEBUG = str(_raw_debug).strip().lower() not in ('false', '0', 'no', 'off')
+else:
+    DEBUG = True
 
 # Comma-separated list of allowed hosts, e.g. DJANGO_ALLOWED_HOSTS=mysite.com,www.mysite.com
-_raw_hosts = os.environ.get('DJANGO_ALLOWED_HOSTS', '*')
+_raw_hosts = os.environ.get('DJANGO_ALLOWED_HOSTS') or os.environ.get('ALLOWED_HOSTS', '*')
 ALLOWED_HOSTS = [h.strip() for h in _raw_hosts.split(',') if h.strip()]
 
 # Trusted origins for CSRF (required when served behind a proxy / on HTTPS).
-# e.g. DJANGO_CSRF_TRUSTED_ORIGINS=https://mysite.com,https://www.mysite.com
-_raw_csrf = os.environ.get('DJANGO_CSRF_TRUSTED_ORIGINS', '')
+_raw_csrf = os.environ.get('DJANGO_CSRF_TRUSTED_ORIGINS') or os.environ.get('CSRF_TRUSTED_ORIGINS', '')
 CSRF_TRUSTED_ORIGINS = [o.strip() for o in _raw_csrf.split(',') if o.strip()]
+
+# ── Railway / Cloud Automatic Host & CSRF Configuration ─────────────────────
+_railway_domain = os.environ.get('RAILWAY_PUBLIC_DOMAIN') or os.environ.get('RAILWAY_STATIC_URL')
+if _railway_domain:
+    _clean_domain = _railway_domain.replace("https://", "").replace("http://", "").rstrip("/")
+    if _clean_domain not in ALLOWED_HOSTS and "*" not in ALLOWED_HOSTS:
+        ALLOWED_HOSTS.append(_clean_domain)
+    _railway_origin = f"https://{_clean_domain}"
+    if _railway_origin not in CSRF_TRUSTED_ORIGINS:
+        CSRF_TRUSTED_ORIGINS.append(_railway_origin)
+
 
 
 # Application definition
@@ -328,7 +350,13 @@ WSGI_APPLICATION = 'school_erp.wsgi.application'
 # Local development:   leave DATABASE_URL unset → SQLite with WAL mode.
 # ─────────────────────────────────────────────────────────────────────────────
 
-_DATABASE_URL = os.environ.get("DATABASE_URL", "")
+_DATABASE_URL = (
+    os.environ.get("DATABASE_URL")
+    or os.environ.get("POSTGRES_URL")
+    or os.environ.get("DATABASE_PUBLIC_URL")
+    or os.environ.get("PGDATABASE_URL")
+    or ""
+)
 
 if _DATABASE_URL:
     # ── PostgreSQL (production) ──────────────────────────────────────────────

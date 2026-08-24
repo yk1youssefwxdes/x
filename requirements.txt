@@ -30,6 +30,7 @@ pyarmor.cli.core==8.1.1
 pycparser==3.0
 Pygments==2.20.0
 python-dateutil==2.9.0.post0
+python-dotenv==1.2.3
 psycopg2-binary==2.9.12
 reportlab==4.5.1
 six==1.17.0
