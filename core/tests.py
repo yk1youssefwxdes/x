@@ -1,4 +1,5 @@
 from django.test import TestCase
+from django.urls import reverse
 from datetime import date, time
 from decimal import Decimal
 from django.contrib.auth import get_user_model
@@ -852,6 +853,113 @@ class WhatsAppGroupInviteTestCase(TestCase):
                 status='PAID'
             )
             mock_send.assert_not_called()
+
+
+class WhatsAppBulkAnnouncementsTests(TestCase):
+    def setUp(self):
+        from core.models import Level, LevelCategory, Teacher, CourseGroup, Student, Enrollment
+        from django.contrib.auth.models import User
+
+        self.user = User.objects.create_superuser(username='admin_test_bulk', password='password123', email='admin@test.com')
+        self.client.login(username='admin_test_bulk', password='password123')
+
+        self.category, _ = LevelCategory.objects.get_or_create(code="LYCEE", defaults={'name': "Lycée"})
+        self.level_bac, _ = Level.objects.get_or_create(name="2ème Bac", defaults={'category': self.category})
+        self.level_tc, _ = Level.objects.get_or_create(name="Tronc Commun", defaults={'category': self.category})
+
+        self.teacher = Teacher.objects.create(
+            name="Professeur Rachid",
+            phone="0611223344",
+            email="rachid@example.com",
+            is_active=True
+        )
+
+        self.group = CourseGroup.objects.create(
+            name="Math 2Bac Grp 1",
+            subject="Mathématiques",
+            level=self.level_bac,
+            teacher=self.teacher,
+            monthly_price=Decimal("500.00"),
+            whatsapp_group_link="https://chat.whatsapp.com/TEST_LINK_123",
+            is_active=True
+        )
+
+        self.student_1 = Student.objects.create(
+            name="Aya Mansouri",
+            parent_name="Hassan Mansouri",
+            parent_contact="0661112233",
+            parent_contact_2="0662223344",
+            phone="0663334455",
+            level=self.level_bac,
+            is_active=True
+        )
+        Enrollment.objects.create(student=self.student_1, course_group=self.group, is_active=True)
+
+        self.student_2 = Student.objects.create(
+            name="Omar Tazi",
+            parent_name="Khadija Tazi",
+            parent_contact="0671112233",
+            phone="0672223344",
+            level=self.level_tc,
+            is_active=True
+        )
+
+    def test_bulk_announcements_get_view(self):
+        response = self.client.get(reverse('core:whatsapp_bulk_announcements'))
+        self.assertEqual(response.status_code, 200)
+        self.assertTemplateUsed(response, 'core/whatsapp_bulk_announcements.html')
+        self.assertIn('templates_catalog', response.context)
+        self.assertIn('students_json', response.context)
+        self.assertIn('teachers_json', response.context)
+        self.assertIn('groups_with_link', response.context)
+        self.assertEqual(len(response.context['groups_with_link']), 1)
+
+    def test_bulk_announcements_post_all_parents_students(self):
+        post_data = {
+            'audience_type': 'all_parents_students',
+            'message_template': 'Bonjour {name}, message pour {student_name} ({level}).',
+        }
+        response = self.client.post(reverse('core:whatsapp_bulk_announcements'), post_data)
+        self.assertEqual(response.status_code, 200)
+        self.assertTemplateUsed(response, 'core/whatsapp_bulk_results.html')
+        bulk_links = response.context['bulk_links']
+        # student 1 has P1, P2, and student phone (3 contacts), student 2 has P1 and student phone (2 contacts) => 5 contacts
+        self.assertEqual(len(bulk_links), 5)
+        # Check variable replacements
+        p1_link = next(l for l in bulk_links if l['phone'] == '0661112233')
+        self.assertEqual(p1_link['name'], 'Hassan Mansouri')
+        self.assertIn('Hassan Mansouri', p1_link['message'])
+        self.assertIn('Aya Mansouri', p1_link['message'])
+        self.assertIn('2ème Bac', p1_link['message'])
+
+    def test_bulk_announcements_post_by_level(self):
+        post_data = {
+            'audience_type': 'by_level',
+            'level_ids': [str(self.level_bac.id)],
+            'contact_channel': 'parents_only',
+            'message_template': 'Rappel Bac pour {student_name}.',
+        }
+        response = self.client.post(reverse('core:whatsapp_bulk_announcements'), post_data)
+        self.assertEqual(response.status_code, 200)
+        bulk_links = response.context['bulk_links']
+        # Student 1 is in 2Bac, parents only (P1 and P2) => 2 contacts
+        self.assertEqual(len(bulk_links), 2)
+        phones = [l['phone'] for l in bulk_links]
+        self.assertIn('0661112233', phones)
+        self.assertIn('0662223344', phones)
+
+    def test_bulk_announcements_post_teachers(self):
+        post_data = {
+            'audience_type': 'teachers',
+            'message_template': 'Réunion pour {name}, vos classes : {groups}.',
+        }
+        response = self.client.post(reverse('core:whatsapp_bulk_announcements'), post_data)
+        self.assertEqual(response.status_code, 200)
+        bulk_links = response.context['bulk_links']
+        self.assertEqual(len(bulk_links), 1)
+        self.assertEqual(bulk_links[0]['phone'], '0611223344')
+        self.assertIn('Professeur Rachid', bulk_links[0]['message'])
+        self.assertIn('Math 2Bac Grp 1', bulk_links[0]['message'])
 
 
 

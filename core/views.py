@@ -9,7 +9,7 @@ from django.db.models import Q, Count, Sum
 from decimal import Decimal
 from datetime import timedelta, date
 
-from .models import Student, Payment, Enrollment, Room, Teacher, WhatsAppSendLog
+from .models import Student, Payment, Enrollment, Room, Teacher, WhatsAppSendLog, Level, LevelCategory
 from .utils import WhatsAppMessageTemplates, WhatsAppUtils, WhatsAppServiceAPI, _build_room_schedule, _build_teacher_schedule, _calculate_week_stats, get_dashboard_stats, generate_receipt_pdf, calculate_student_monthly_total, generate_sessions_from_coursegroups, _annotate_conflicts, load_message_template, SafeDict
 from .forms import SessionForm, StudentForm, EnrollmentForm
 from django.core.paginator import Paginator
@@ -2557,44 +2557,182 @@ def whatsapp_absence_notifications(request):
 
 @require_http_methods(["GET", "POST"])
 def whatsapp_bulk_announcements(request):
-    """Create bulk WhatsApp announcement links for all active students"""
-    
-    students = Student.objects.filter(is_active=True)
-    
-    # Build contacts list
-    contacts = []
-    for student in students:
-        if student.parent_contact:
-            contacts.append({
-                'phone': student.parent_contact,
-                'name': student.parent_name or 'Parent',
-                'student_name': student.name,
-            })
-        if student.parent_contact_2:
-            contacts.append({
-                'phone': student.parent_contact_2,
-                'name': student.parent_name or 'Parent',
-                'student_name': student.name,
-            })
-    
-    # Fetch all course groups that have a WhatsApp group link
+    """
+    Advanced bulk WhatsApp announcements with multi-audience targeting,
+    rich categorized templates, dynamic variable tags, and attachments.
+    """
+    school_name = getattr(settings, 'SCHOOL_NAME', 'Établissement')
+    today_str = timezone.now().strftime('%d/%m/%Y')
+    status_data = WhatsAppServiceAPI.get_status()
+
+    # Query all necessary master data
+    levels = Level.objects.all().select_related('category').order_by('category__name', 'name')
+    course_groups = CourseGroup.objects.filter(is_active=True).select_related('teacher', 'level').order_by('name')
+    teachers = Teacher.objects.filter(is_active=True).prefetch_related('course_groups').order_by('name')
+    all_active_students = Student.objects.filter(is_active=True).select_related('level').prefetch_related('enrollment_set__course_group').order_by('name')
+
+    # Groups with active WhatsApp invite link
     groups_with_link = CourseGroup.objects.filter(
         is_active=True,
         whatsapp_group_link__isnull=False
-    ).exclude(whatsapp_group_link='').select_related('teacher')
-    
-    # If POST, generate links with custom message and optionally save attachments
-    status_data = WhatsAppServiceAPI.get_status()
+    ).exclude(whatsapp_group_link='').select_related('teacher', 'level').order_by('name')
+
+    # Templates catalog
+    templates_catalog = {
+        'pedagogique': {
+            'label': '🎓 Pédagogie & Examens',
+            'templates': [
+                {
+                    'id': 'controle_continu',
+                    'title': 'Contrôle Continu',
+                    'badge': 'Contrôle',
+                    'text': "Bonjour {name},\n\nNous vous informons qu'un contrôle continu pour le cours de {groups} est prévu le [DATE] pour l'élève {student_name}.\n\nMerci de veiller à une bonne préparation.\nCordialement,\n{school_name}"
+                },
+                {
+                    'id': 'examens_blancs',
+                    'title': 'Examens Blancs',
+                    'badge': 'Examens',
+                    'text': "Bonjour {name},\n\nLes examens blancs pour le niveau {level} débuteront le [DATE DÉBUT] et se poursuivront jusqu'au [DATE FIN].\n\nLe planning détaillé a été transmis à {student_name}.\nNous leur souhaitons plein succès !\n{school_name}"
+                },
+                {
+                    'id': 'bulletins',
+                    'title': 'Remise des Bulletins',
+                    'badge': 'Bulletins',
+                    'text': "Bonjour {name},\n\nLes bulletins de notes de la période pour {student_name} ({level}) sont prêts et disponibles auprès de la direction.\n\nCordialement,\n{school_name}"
+                },
+                {
+                    'id': 'devoirs',
+                    'title': 'Devoirs & Travail à faire',
+                    'badge': 'Devoirs',
+                    'text': "Bonjour {name},\n\nUn devoir maison important a été assigné pour le cours de {groups} à rendre au plus tard le [DATE]. Merci de vérifier l'avancement de {student_name}.\n\nCordialement,\n{school_name}"
+                },
+            ]
+        },
+        'evenements': {
+            'label': '📅 Événements & Réunions',
+            'templates': [
+                {
+                    'id': 'reunion_parents',
+                    'title': 'Réunion Parents-Professeurs',
+                    'badge': 'Réunion',
+                    'text': "Bonjour {name},\n\nNous vous convions à la réunion parents-professeurs le [DATE] à partir de [HEURE] afin d'échanger sur les progrès et le suivi de {student_name} ({level}).\n\nVotre présence est vivement encouragée.\n{school_name}"
+                },
+                {
+                    'id': 'portes_ouvertes',
+                    'title': 'Journée Portes Ouvertes',
+                    'badge': 'Portes Ouvertes',
+                    'text': "Bonjour {name},\n\n{school_name} a le plaisir de vous inviter à sa Journée Portes Ouvertes & Orientation le [DATE] de [HEURE DÉBUT] à [HEURE FIN].\n\nVenez découvrir nos méthodes et nos programmes !\n{school_name}"
+                },
+                {
+                    'id': 'atelier_orientation',
+                    'title': 'Atelier Orientation & Concours',
+                    'badge': 'Atelier',
+                    'text': "Bonjour {name},\n\nUn atelier de préparation et d'orientation vers les grandes écoles est organisé le [DATE] pour les élèves de {level}.\n\n{student_name} y est chaleureusement invité(e).\nCordialement,\n{school_name}"
+                },
+            ]
+        },
+        'administratif': {
+            'label': '🏛️ Administratif & Horaires',
+            'templates': [
+                {
+                    'id': 'vacances',
+                    'title': 'Vacances Scolaires',
+                    'badge': 'Vacances',
+                    'text': "Bonjour {name},\n\nNous vous informons que les vacances scolaires débuteront le [DATE DÉBUT] après les cours. La reprise officielle des cours aura lieu le [DATE REPRISE].\n\nExcellentes vacances à {student_name} !\n{school_name}"
+                },
+                {
+                    'id': 'fermeture',
+                    'title': 'Fermeture Exceptionnelle',
+                    'badge': 'Fermeture',
+                    'text': "Bonjour {name},\n\nL'établissement sera exceptionnellement fermé le [DATE]. Les cours reprendront selon les horaires normaux le [DATE REPRISE].\n\nMerci pour votre compréhension.\nLa direction de {school_name}"
+                },
+                {
+                    'id': 'horaires_ramadan',
+                    'title': 'Aménagement Horaires (Ramadan)',
+                    'badge': 'Horaires',
+                    'text': "Bonjour {name},\n\nÀ l'occasion du mois sacré de Ramadan, les créneaux horaires des groupes ({groups}) sont réaménagés comme suit :\n[NOUVEAUX HORAIRES].\n\nRamadan Moubarak à vous et à vos proches !\n{school_name}"
+                },
+                {
+                    'id': 'reprise_cours',
+                    'title': 'Rappel de Reprise',
+                    'badge': 'Reprise',
+                    'text': "Bonjour {name},\n\nNous vous rappelons que la rentrée / reprise des cours pour {student_name} ({level}) aura lieu le [DATE] aux horaires habituels.\n\nBonne reprise à tous !\n{school_name}"
+                },
+            ]
+        },
+        'paiement': {
+            'label': '💳 Règlements & Inscriptions',
+            'templates': [
+                {
+                    'id': 'rappel_mensualite',
+                    'title': 'Rappel Mensualité en attente',
+                    'badge': 'Mensualité',
+                    'text': "Bonjour {name},\n\nNous vous informons avec bienveillance que le règlement de la mensualité pour {student_name} ({level}) est actuellement en attente pour le mois en cours.\n\nMerci de vous rapprocher de l'administration pour régularisation.\nCordialement,\n{school_name}"
+                },
+                {
+                    'id': 'reinscription',
+                    'title': 'Campagne de Réinscription',
+                    'badge': 'Réinscription',
+                    'text': "Bonjour {name},\n\nLes réinscriptions pour la prochaine année scolaire sont ouvertes pour {student_name} ({level}). Le nombre de places par groupe étant limité, merci de confirmer l'inscription avant le [DATE LIMITE].\n\nCordialement,\n{school_name}"
+                },
+            ]
+        },
+        'urgence': {
+            'label': '🚨 Alertes & Urgences',
+            'templates': [
+                {
+                    'id': 'intemperies',
+                    'title': 'Suspension des Cours (Météo / Urgence)',
+                    'badge': 'Urgent',
+                    'text': "⚠️ ALERTE / INFORMATION IMPORTANTE\n\nBonjour {name},\n\nEn raison de circonstances exceptionnelles / intempéries, les cours sont suspendus le [DATE].\n\nNous vous tiendrons informés de l'évolution de la situation.\nLa direction de {school_name}"
+                },
+                {
+                    'id': 'report_seance',
+                    'title': 'Report Imprévu de Séance',
+                    'badge': 'Report',
+                    'text': "⚠️ CHANGEMENT DE SÉANCE\n\nBonjour {name},\n\nLa séance de {groups} initialement programmée le [DATE] à [HEURE] pour {student_name} est reportée au [NOUVELLE DATE] à [NOUVELLE HEURE].\n\nMerci de votre compréhension,\n{school_name}"
+                },
+            ]
+        },
+        'enseignants': {
+            'label': '👨‍🏫 Note aux Enseignants',
+            'templates': [
+                {
+                    'id': 'reunion_pedagogique',
+                    'title': 'Réunion Pédagogique',
+                    'badge': 'Réunion Profs',
+                    'text': "Bonjour cher(e) professeur {name},\n\nUne réunion de coordination pédagogique se tiendra le [DATE] à [HEURE] en salle des réunions.\n\nMerci pour votre engagement constant.\nLa direction de {school_name}"
+                },
+                {
+                    'id': 'remise_notes',
+                    'title': 'Dépôt des Notes & Feuilles de Présence',
+                    'badge': 'Remise Notes',
+                    'text': "Bonjour {name},\n\nNous vous prions de bien vouloir finaliser la transmission des notes et états de présence des groupes ({groups}) avant le [DATE LIMITE].\n\nMerci pour votre précieuse collaboration,\n{school_name}"
+                },
+                {
+                    'id': 'conseil_classe',
+                    'title': 'Conseil de Classe',
+                    'badge': 'Conseil',
+                    'text': "Bonjour {name},\n\nLe conseil de classe pour les niveaux ({level}) aura lieu le [DATE] à [HEURE]. Votre participation active est vivement appréciée.\n\nCordialement,\n{school_name}"
+                },
+            ]
+        },
+    }
 
     if request.method == 'POST':
+        audience_type = request.POST.get('audience_type', 'all_parents_students')
+        contact_channel = request.POST.get('contact_channel', 'all_available')
+        level_ids = [int(x) for x in request.POST.getlist('level_ids') if x.isdigit()]
+        group_ids = [int(x) for x in request.POST.getlist('group_ids') if x.isdigit()]
+        selected_student_ids = [int(x) for x in request.POST.getlist('student_ids') if x.isdigit()]
+        teacher_ids = [int(x) for x in request.POST.getlist('teacher_ids') if x.isdigit()]
+        payment_filter = request.POST.get('payment_filter', 'all')
         message_template = request.POST.get('message_template', '').strip()
 
-        # Handle uploaded attachments (optional)
+        # Handle uploaded attachments
         attachments = []
         uploaded_files = request.FILES.getlist('attachments')
-
         for f in uploaded_files:
-            # Use a safe unique filename to avoid collisions
             filename = f"{uuid.uuid4().hex}_{f.name}"
             save_path = f"whatsapp_attachments/{filename}"
             saved_path = default_storage.save(save_path, ContentFile(f.read()))
@@ -2607,35 +2745,227 @@ def whatsapp_bulk_announcements(request):
 
         if not message_template and not attachments:
             messages.error(request, "Veuillez saisir un message ou joindre au moins un fichier.")
+            return redirect('core:whatsapp_bulk_announcements')
+
+        contacts = []
+        seen_phones = set()
+
+        if audience_type == 'teachers':
+            teacher_qs = Teacher.objects.filter(is_active=True).prefetch_related('course_groups')
+            if teacher_ids:
+                teacher_qs = teacher_qs.filter(id__in=teacher_ids)
+
+            for t in teacher_qs:
+                if not t.phone:
+                    continue
+                p_clean = WhatsAppUtils.clean_phone_number(t.phone)
+                if p_clean and p_clean not in seen_phones:
+                    seen_phones.add(p_clean)
+                    taught_groups = ", ".join([g.name for g in t.course_groups.filter(is_active=True)])
+                    contacts.append({
+                        'phone': t.phone,
+                        'name': t.name,
+                        'student_name': t.name,
+                        'recipient_name': t.name,
+                        'recipient_type': 'Enseignant',
+                        'level': 'Corps Enseignant',
+                        'groups': taught_groups or 'Aucun groupe assigné',
+                        'school_name': school_name,
+                        'date': today_str,
+                    })
         else:
-            bulk_links = WhatsAppUtils.generate_bulk_links(
-                contacts,
-                message_template or ""
-            )
+            students_qs = Student.objects.filter(is_active=True).select_related('level').prefetch_related('enrollment_set__course_group')
 
-            context = {
-                'bulk_links': bulk_links,
-                'message_template': message_template,
-                'total_contacts': len(bulk_links),
-                'status_data': status_data,
-                'attachments': attachments,
-            }
+            if audience_type == 'by_level' and level_ids:
+                students_qs = students_qs.filter(level_id__in=level_ids)
+            elif audience_type == 'by_group' and group_ids:
+                students_qs = students_qs.filter(enrollment__course_group_id__in=group_ids, enrollment__is_active=True).distinct()
+            elif audience_type == 'by_student' and selected_student_ids:
+                students_qs = students_qs.filter(id__in=selected_student_ids)
 
-            return render(request, 'core/whatsapp_bulk_results.html', context)
-    
-    # GET request - show form
+            # Payment filter
+            if payment_filter in ['unpaid', 'paid']:
+                current_month = timezone.now().date().replace(day=1)
+                filtered_students = []
+                for st in students_qs:
+                    required = calculate_student_monthly_total(st)
+                    paid = Payment.objects.filter(
+                        student=st,
+                        month_covered=current_month,
+                        status='PAID'
+                    ).aggregate(total=Sum('amount'))['total'] or Decimal('0')
+                    is_unpaid = (required - paid) > 0
+                    if payment_filter == 'unpaid' and is_unpaid:
+                        filtered_students.append(st)
+                    elif payment_filter == 'paid' and not is_unpaid:
+                        filtered_students.append(st)
+                students_qs = filtered_students
+
+            for student in students_qs:
+                parent_name = student.parent_name or 'Parent'
+                level_name = student.level.name if student.level else ''
+                group_names = ", ".join([e.course_group.name for e in student.enrollment_set.all() if e.is_active])
+
+                # Channels determination
+                include_p1 = False
+                include_p2 = False
+                include_student = False
+
+                if audience_type == 'all_parents_students':
+                    include_p1 = True
+                    include_p2 = True
+                    include_student = True
+                elif audience_type == 'all_parents':
+                    include_p1 = True
+                    include_p2 = True
+                elif audience_type == 'all_students':
+                    include_student = True
+                else:
+                    if contact_channel in ['all_available', 'parents_and_students']:
+                        include_p1 = True
+                        include_p2 = True
+                        include_student = True
+                    elif contact_channel == 'parents_only':
+                        include_p1 = True
+                        include_p2 = True
+                    elif contact_channel == 'parent_1_only':
+                        include_p1 = True
+                    elif contact_channel == 'parent_2_only':
+                        include_p2 = True
+                    elif contact_channel == 'student_only':
+                        include_student = True
+
+                if include_p1 and student.parent_contact:
+                    p_clean = WhatsAppUtils.clean_phone_number(student.parent_contact)
+                    if p_clean and p_clean not in seen_phones:
+                        seen_phones.add(p_clean)
+                        contacts.append({
+                            'phone': student.parent_contact,
+                            'name': parent_name,
+                            'recipient_name': parent_name,
+                            'recipient_type': 'Parent 1',
+                            'student_name': student.name,
+                            'level': level_name,
+                            'groups': group_names,
+                            'school_name': school_name,
+                            'date': today_str,
+                            'student_id': student.id,
+                        })
+
+                if include_p2 and student.parent_contact_2:
+                    p_clean = WhatsAppUtils.clean_phone_number(student.parent_contact_2)
+                    if p_clean and p_clean not in seen_phones:
+                        seen_phones.add(p_clean)
+                        contacts.append({
+                            'phone': student.parent_contact_2,
+                            'name': parent_name,
+                            'recipient_name': f"{parent_name} (Contact 2)",
+                            'recipient_type': 'Parent 2',
+                            'student_name': student.name,
+                            'level': level_name,
+                            'groups': group_names,
+                            'school_name': school_name,
+                            'date': today_str,
+                            'student_id': student.id,
+                        })
+
+                if include_student and student.phone:
+                    p_clean = WhatsAppUtils.clean_phone_number(student.phone)
+                    if p_clean and p_clean not in seen_phones:
+                        seen_phones.add(p_clean)
+                        contacts.append({
+                            'phone': student.phone,
+                            'name': student.name,
+                            'recipient_name': student.name,
+                            'recipient_type': 'Élève',
+                            'student_name': student.name,
+                            'level': level_name,
+                            'groups': group_names,
+                            'school_name': school_name,
+                            'date': today_str,
+                            'student_id': student.id,
+                        })
+
+        if not contacts:
+            messages.warning(request, "Aucun destinataire correspondant aux critères sélectionnés n'a été trouvé.")
+            return redirect('core:whatsapp_bulk_announcements')
+
+        bulk_links = WhatsAppUtils.generate_bulk_links(
+            contacts,
+            message_template or ""
+        )
+
+        audience_labels = {
+            'all_parents_students': 'Tous les parents et tous les élèves',
+            'all_parents': 'Tous les parents d\'élèves',
+            'all_students': 'Tous les élèves (numéros directs)',
+            'by_level': 'Par Niveaux scolaires sélectionnés',
+            'by_group': 'Par Groupes de cours sélectionnés',
+            'by_student': 'Sélection personnalisée d\'élèves',
+            'by_payment': 'Filtré par statut de paiement',
+            'teachers': 'Corps enseignant (Professeurs)',
+        }
+
+        context = {
+            'bulk_links': bulk_links,
+            'message_template': message_template,
+            'total_contacts': len(bulk_links),
+            'status_data': status_data,
+            'attachments': attachments,
+            'audience_type_label': audience_labels.get(audience_type, 'Audience personnalisée'),
+        }
+
+        return render(request, 'core/whatsapp_bulk_results.html', context)
+
+    # Build JSON directory of students for instant frontend filtering and live counter
+    students_json_list = []
+    for st in all_active_students:
+        students_json_list.append({
+            'id': st.id,
+            'name': st.name,
+            'parent_name': st.parent_name or 'Parent',
+            'has_p1': bool(st.parent_contact),
+            'has_p2': bool(st.parent_contact_2),
+            'has_st_phone': bool(st.phone),
+            'level_id': st.level_id or 0,
+            'level_name': st.level.name if st.level else 'Sans niveau',
+            'group_ids': [e.course_group_id for e in st.enrollment_set.all() if e.is_active],
+            'group_names': ", ".join([e.course_group.name for e in st.enrollment_set.all() if e.is_active]),
+        })
+
+    teachers_json_list = []
+    for t in teachers:
+        teachers_json_list.append({
+            'id': t.id,
+            'name': t.name,
+            'phone': t.phone,
+            'has_phone': bool(t.phone),
+            'group_names': ", ".join([g.name for g in t.course_groups.filter(is_active=True)]),
+        })
+
+    # Default all contacts count
+    initial_contacts_count = sum(
+        bool(s.parent_contact) + bool(s.parent_contact_2) + bool(s.phone)
+        for s in all_active_students
+    )
+
     context = {
-        'contacts': contacts,
-        'total_contacts': len(contacts),
+        'levels': levels,
+        'course_groups': course_groups,
+        'teachers': teachers,
+        'all_active_students': all_active_students,
+        'students_json': students_json_list,
+        'teachers_json': teachers_json_list,
+        'initial_contacts_count': initial_contacts_count,
+        'total_students': all_active_students.count(),
+        'total_teachers': teachers.count(),
         'groups_with_link': groups_with_link,
-        'templates': {
-            'general': load_message_template('whatsapp_bulk_general.txt', "Bonjour {name}, message général pour tous les parents..."),
-            'event': load_message_template('whatsapp_bulk_event.txt', "Bonjour {name}, nous organisons un événement le [DATE]. Votre enfant {student_name} est invité à participer."),
-            'closure': load_message_template('whatsapp_bulk_closure.txt', "Bonjour {name}, l'établissement sera fermé du [DATE] au [DATE]. Les cours reprendront le [DATE]."),
-        },
+        'templates_catalog': templates_catalog,
         'status_data': status_data,
+        'school_name': school_name,
+        'today_date': today_str,
     }
-    
+
     return render(request, 'core/whatsapp_bulk_announcements.html', context)
 
 
