@@ -406,9 +406,63 @@ Categories=Office;Education;
 
 
 
+def scrub_sensitive_dev_files(base_dir: Path) -> None:
+    """
+    Remove development tooling, license generator tools, test suites, and docs
+    from the client installation directory to prevent easy reverse-engineering.
+    """
+    dirs_to_remove = [
+        "tools",
+        "playwright_test",
+        "docs",
+        "tests",
+        "scripts",
+        ".git",
+        ".github",
+        ".claude",
+        ".gemini",
+        ".agents",
+    ]
+    files_to_remove = [
+        "license_source.json",
+        "license_local.enc.bak",
+        "installer.iss",
+        "nixpacks.toml",
+        "railway.json",
+        "Procfile",
+        ".env.example",
+        "setup.sh",
+        "setup.bat",
+    ]
+
+    for d in dirs_to_remove:
+        p = base_dir / d
+        if p.is_dir():
+            shutil.rmtree(p, ignore_errors=True)
+
+    for f in files_to_remove:
+        p = base_dir / f
+        if p.is_file():
+            try:
+                p.unlink()
+            except Exception:
+                pass
+
+    # Remove temporary .vbs
+    temp_vbs = base_dir / "_create_shortcut.vbs"
+    if temp_vbs.is_file():
+        try:
+            temp_vbs.unlink()
+        except Exception:
+            pass
+
+    log_ok("Sensitive developer tools, test suites, and source artifacts scrubbed.")
+
+
 # ==============================================================================
 # Main Orchestration Flow
 # ==============================================================================
+
 
 def parse_arguments() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="School ERP Client PC Automated Setup")
@@ -509,14 +563,17 @@ def main() -> int:
 
     create_desktop_shortcuts(pythonw_exe, enable_autostart=enable_autostart)
 
-    # Step 7: Final Status & Launch
-    log_step(6, TOTAL_STEPS, "Setup Completion")
+    # Step 7: Scrub sensitive files & Final Status
+    log_step(6, TOTAL_STEPS, "Security Scrubbing & Completion")
+    scrub_sensitive_dev_files(PROJECT_ROOT)
+
     log_header("SETUP COMPLETED SUCCESSFULLY!")
     print(f"  Application Location : {PROJECT_ROOT}")
     print(f"  Launcher             : {PROJECT_ROOT / 'run_server.py'}")
     print(f"  Hardware Fingerprint : {fp}")
     print(f"  Windows Boot Startup : {'Enabled (auto-starts on boot)' if enable_autostart else 'Disabled'}")
     print("================================================================\n")
+
 
     should_launch = args.launch
     if not should_launch and not args.non_interactive:

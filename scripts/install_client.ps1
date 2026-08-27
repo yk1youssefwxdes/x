@@ -188,8 +188,12 @@ if ($LaunchAfter) {
 & $PythonExe $SetupArgs
 
 
-# Cleanup temp files
+# Cleanup setup scripts and temporary install files
+Remove-Item -Path (Join-Path $InstallDir "setup_client.py") -Force -ErrorAction SilentlyContinue
+Remove-Item -Path (Join-Path $InstallDir "setup.bat") -Force -ErrorAction SilentlyContinue
+Remove-Item -Path (Join-Path $InstallDir "setup.sh") -Force -ErrorAction SilentlyContinue
 Remove-Item -Recurse -Force $TempDir -ErrorAction SilentlyContinue
+
 
 Write-Host "`n[5/5] Setup finished!" -ForegroundColor Green
 Write-Host "======================================================================" -ForegroundColor Cyan
