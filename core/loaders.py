@@ -10,7 +10,7 @@ class DecryptedFilesystemLoader(FilesystemLoader):
             with open(origin.name, 'rb') as fp:
                 encrypted_data = fp.read()
             if encrypted_data.startswith(b'ENC\x00'):
-                key = b'school_erp_template_secret_key_2026'
+                key = b'WjUPGJkCB3rBU65JxLlhQlSJ0cmgIYiEwZjz9bT8+7Y='
                 decrypted_data = xor_crypt(encrypted_data[4:], key)
                 return decrypted_data.decode(self.engine.file_charset)
             else:

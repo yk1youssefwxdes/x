@@ -268,12 +268,41 @@ def setup_node_dependencies(node_exe: Optional[str]) -> bool:
     return True
 
 
-# ==============================================================================
-# 4. Database, Directories & Static Setup
-# ==============================================================================
+def configure_environment(base_dir: Path) -> None:
+    """
+    Generate and configure a secure production .env file for the client system.
+    """
+    env_file = base_dir / ".env"
+    if not env_file.exists():
+        import secrets
+        secret_key = secrets.token_urlsafe(64)
+        wa_key = secrets.token_hex(24)
+
+        env_content = f"""# School ERP - Production Environment Configuration
+DJANGO_SECRET_KEY={secret_key}
+DJANGO_DEBUG=False
+DJANGO_ALLOWED_HOSTS=127.0.0.1,localhost,0.0.0.0
+DJANGO_CSRF_TRUSTED_ORIGINS=http://127.0.0.1:8000,http://localhost:8000
+WA_API_KEY={wa_key}
+WA_PORT=3000
+"""
+        env_file.write_text(env_content, encoding="utf-8")
+
+        try:
+            from core.paths import get_config_dir
+            config_env = get_config_dir() / ".env"
+            config_env.parent.mkdir(parents=True, exist_ok=True)
+            config_env.write_text(env_content, encoding="utf-8")
+        except Exception:
+            pass
+
+        log_ok("Production environment (.env) configured with unique secrets.")
+    else:
+        log_ok("Existing environment (.env) preserved.")
+
 
 def initialize_application(python_exe: str) -> bool:
-    """Ensure directories, run database migrations, and collect static files."""
+    """Ensure directories, configure .env, run database migrations, and collect static files."""
     try:
         from core.paths import ensure_data_directories, migrate_legacy_data
         ensure_data_directories()
@@ -281,6 +310,10 @@ def initialize_application(python_exe: str) -> bool:
         log_ok("Customer data directories initialized.")
     except Exception as exc:
         log_warn(f"Data directories initialization warning: {exc}")
+
+    # Generate / configure environment file
+    configure_environment(PROJECT_ROOT)
+
 
     # Run migrations
     manage_py = PROJECT_ROOT / "manage.py"
