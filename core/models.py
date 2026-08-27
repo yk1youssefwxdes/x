@@ -639,6 +639,7 @@ class Enrollment(models.Model):
     enrolled_date = models.DateField(auto_now_add=True, verbose_name="Date d'inscription")
     is_active = models.BooleanField(default=True, verbose_name="Active")
     next_payment_date = models.DateField(null=True, blank=True, verbose_name="Prochaine date de paiement")
+    whatsapp_invite_sent = models.BooleanField(default=False, verbose_name="Lien WhatsApp envoyé")
     
     class Meta:
         verbose_name = "Inscription"
@@ -1162,6 +1163,7 @@ class WhatsAppSendLog(models.Model):
         ('absence_notification', 'Notification d\'absence'),
         ('session_reminder', 'Rappel de séance'),
         ('bulk_announcement', 'Annonce groupée'),
+        ('group_invite', 'Lien groupe WhatsApp'),
         ('other', 'Autre'),
     ]
 
@@ -1329,11 +1331,17 @@ class SessionChangeHistory(models.Model):
     change_reason = models.TextField(blank=True, null=True, verbose_name="Motif du changement")
     ip_address = models.GenericIPAddressField(blank=True, null=True, verbose_name="Adresse IP")
     action = models.CharField(max_length=50, verbose_name="Action")
+    is_handled = models.BooleanField(default=False, verbose_name="Traité / Notifié")
+    handled_at = models.DateTimeField(null=True, blank=True, verbose_name="Traité le")
 
     class Meta:
         verbose_name = "Historique de modification de séance"
         verbose_name_plural = "Historiques de modifications de séances"
         ordering = ['-timestamp']
+        indexes = [
+            models.Index(fields=['is_handled']),
+            models.Index(fields=['session', 'is_handled']),
+        ]
 
     def __str__(self):
         return f"{self.action} - {self.session} - {self.timestamp.strftime('%d/%m/%Y %H:%M')}"

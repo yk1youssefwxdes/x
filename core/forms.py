@@ -527,6 +527,11 @@ class SystemSettingsForm(forms.Form):
         required=False,
         widget=forms.CheckboxInput(attrs={'class': 'form-check-input'})
     )
+    WHATSAPP_AUTO_GROUP_INVITE_ON_FIRST_PAYMENT = forms.BooleanField(
+        label="Envoyer automatiquement le lien du groupe WhatsApp lors du premier paiement",
+        required=False,
+        widget=forms.CheckboxInput(attrs={'class': 'form-check-input'})
+    )
 
     # 4. Borne Kiosque Élèves
     KIOSK_TIMEOUT = forms.IntegerField(

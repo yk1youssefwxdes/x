@@ -1331,6 +1331,264 @@
       transform: translateX(0);
     }
 
+    /* ─── Back to Top Button ─────────────────────────────────────── */
+    .back-to-top-btn {
+      position: fixed;
+      bottom: 96px;
+      right: 32px;
+      width: 44px;
+      height: 44px;
+      border-radius: 50%;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      color: var(--text-secondary);
+      box-shadow: var(--shadow-md);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 18px;
+      cursor: pointer;
+      opacity: 0;
+      visibility: hidden;
+      transform: translateY(12px);
+      transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+      z-index: 1025;
+    }
+
+    .back-to-top-btn.visible {
+      opacity: 1;
+      visibility: visible;
+      transform: translateY(0);
+    }
+
+    .back-to-top-btn:hover {
+      background: var(--primary);
+      color: #fff;
+      border-color: var(--primary);
+      box-shadow: 0 6px 18px rgba(37, 99, 235, 0.35);
+      transform: translateY(-2px);
+    }
+
+    /* ─── Command Palette (Ctrl+K) ───────────────────────────────── */
+    .cmd-palette-backdrop {
+      position: fixed;
+      inset: 0;
+      background: rgba(15, 23, 42, 0.7);
+      backdrop-filter: blur(5px);
+      -webkit-backdrop-filter: blur(5px);
+      z-index: 1090;
+      display: flex;
+      align-items: flex-start;
+      justify-content: center;
+      padding-top: 8vh;
+      opacity: 0;
+      visibility: hidden;
+      transition: opacity 0.2s ease, visibility 0.2s ease;
+    }
+
+    .cmd-palette-backdrop.open {
+      opacity: 1;
+      visibility: visible;
+    }
+
+    .cmd-palette-modal {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-xl);
+      box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.3);
+      width: 92%;
+      max-width: 680px;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      max-height: 82vh;
+      transform: scale(0.96) translateY(-8px);
+      transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    .cmd-palette-backdrop.open .cmd-palette-modal {
+      transform: scale(1) translateY(0);
+    }
+
+    .cmd-palette-header {
+      padding: 16px 20px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      background: var(--surface-alt);
+    }
+
+    .cmd-palette-input {
+      border: none;
+      background: transparent;
+      font-size: 17px;
+      font-weight: 500;
+      color: var(--text-primary);
+      width: 100%;
+      outline: none;
+    }
+
+    .cmd-palette-input::placeholder {
+      color: var(--text-muted);
+    }
+
+    .cmd-palette-tabs {
+      display: flex;
+      gap: 6px;
+      padding: 8px 16px;
+      border-bottom: 1px solid var(--border);
+      background: var(--surface);
+      overflow-x: auto;
+    }
+
+    .cmd-tab-btn {
+      border: none;
+      background: transparent;
+      padding: 4px 12px;
+      border-radius: 20px;
+      font-size: 12.5px;
+      font-weight: 600;
+      color: var(--text-secondary);
+      cursor: pointer;
+      transition: all 0.15s;
+      white-space: nowrap;
+    }
+
+    .cmd-tab-btn:hover {
+      background: var(--surface-alt);
+      color: var(--text-primary);
+    }
+
+    .cmd-tab-btn.active {
+      background: var(--primary-light);
+      color: var(--primary-dark);
+    }
+
+    .cmd-palette-results {
+      padding: 8px;
+      overflow-y: auto;
+      flex: 1;
+      max-height: 440px;
+    }
+
+    .cmd-group-label {
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--text-muted);
+      padding: 10px 12px 4px;
+    }
+
+    .cmd-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 9px 12px;
+      border-radius: var(--radius-md);
+      color: var(--text-primary);
+      text-decoration: none;
+      cursor: pointer;
+      transition: background 0.12s;
+    }
+
+    .cmd-item:hover,
+    .cmd-item.selected {
+      background: var(--primary-light);
+      color: var(--primary-dark);
+    }
+
+    .cmd-item-left {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      min-width: 0;
+    }
+
+    .cmd-item-icon {
+      width: 34px;
+      height: 34px;
+      border-radius: 8px;
+      background: rgba(37, 99, 235, 0.1);
+      color: var(--primary);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 15px;
+      flex-shrink: 0;
+    }
+
+    .cmd-item-text {
+      display: flex;
+      flex-direction: column;
+      min-width: 0;
+    }
+
+    .cmd-item-title {
+      font-weight: 600;
+      font-size: 14.5px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .cmd-item-subtitle {
+      font-size: 12px;
+      color: var(--text-muted);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .cmd-item-right {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      flex-shrink: 0;
+    }
+
+    .cmd-shortcut-badge {
+      font-size: 11px;
+      font-weight: 600;
+      background: var(--surface-alt);
+      border: 1px solid var(--border);
+      color: var(--text-secondary);
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-family: monospace;
+    }
+
+    .cmd-palette-footer {
+      padding: 10px 16px;
+      background: var(--surface-alt);
+      border-top: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+
+    /* ─── Keyboard Shortcuts Modal styling ─────────────────────────── */
+    .kbd-chip {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 24px;
+      height: 24px;
+      padding: 0 6px;
+      background: var(--surface-alt);
+      border: 1px solid #cbd5e1;
+      border-bottom: 2px solid #94a3b8;
+      border-radius: 5px;
+      font-family: monospace;
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--text-primary);
+      box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+    }
+
     @media (max-width: 576px) {
       .fab-wrap {
         bottom: 18px;
@@ -1985,13 +2243,20 @@
     <div class="main-area">
 
       <!-- Context bar (breadcrumb) -->
-      <nav class="context-bar" aria-label="Fil d'Ariane">
-        <a href="{% url 'core:cockpit' %}">
-          <i class="bi bi-house-fill" style="font-size:13px;" aria-hidden="true"></i>
-          Accueil
-        </a>
-        {% block breadcrumb %}
-        {% endblock %}
+      <nav class="context-bar d-flex align-items-center justify-content-between" aria-label="Fil d'Ariane">
+        <div class="d-flex align-items-center gap-2">
+          <a href="{% url 'core:cockpit' %}">
+            <i class="bi bi-house-fill" style="font-size:13px;" aria-hidden="true"></i>
+            Accueil
+          </a>
+          {% block breadcrumb %}
+          {% endblock %}
+        </div>
+        <div class="d-none d-md-flex align-items-center gap-2">
+          <button type="button" class="btn btn-link p-0 text-decoration-none text-muted small d-flex align-items-center gap-1" id="openShortcutsBtn" title="Raccourcis clavier (Appuyez sur ?)">
+            <i class="bi bi-keyboard text-primary"></i> <span style="font-size:11.5px;">Raccourcis <kbd class="bg-light border text-dark px-1 py-0 rounded" style="font-size:10px;">?</kbd></span>
+          </button>
+        </div>
       </nav>
 
       <!-- Page content -->
@@ -2004,7 +2269,7 @@
       <footer class="app-footer">
         <div style="margin-bottom: 4px;">&copy; {% now "Y" %} {{ SCHOOL_NAME }} — Système de Gestion Scolaire</div>
         <div style="font-size: 11px; opacity: 0.8;">
-          Construit par <strong style="color: var(--primary);">Youssef Kotari</strong> &amp; · Développeur: <a
+          Construit par <a href="https://youssef-digital-card.vercel.app/" style="color: var(--primary); text-decoration: none;"><strong>Youssef Kotari</strong></a> &amp; · Développeur: <a
             href="tel:0715125245" style="color: var(--primary); text-decoration: none; font-weight: 600;">0715125245</a>
         </div>
       </footer>
@@ -2019,6 +2284,87 @@
       aria-label="Nouveau paiement">
       <i class="bi bi-cash-coin" aria-hidden="true"></i>
     </a>
+  </div>
+
+  <!-- Back to Top button -->
+  <button type="button" class="back-to-top-btn" id="backToTopBtn" aria-label="Remonter en haut de page" title="Remonter en haut">
+    <i class="bi bi-chevron-up" aria-hidden="true"></i>
+  </button>
+
+  <!-- Command Palette Modal (Ctrl+K) -->
+  <div class="cmd-palette-backdrop" id="cmdPaletteBackdrop" role="dialog" aria-modal="true" aria-label="Centre de commandes">
+    <div class="cmd-palette-modal">
+      <div class="cmd-palette-header">
+        <i class="bi bi-search text-primary fs-5"></i>
+        <input type="text" id="cmdPaletteInput" class="cmd-palette-input" placeholder="Rechercher élève, page, action rapide..." autocomplete="off">
+        <button type="button" class="btn-close btn-sm" id="cmdPaletteCloseBtn" aria-label="Fermer"></button>
+      </div>
+      <div class="cmd-palette-tabs">
+        <button type="button" class="cmd-tab-btn active" data-tab="all">Tout</button>
+        <button type="button" class="cmd-tab-btn" data-tab="students"><i class="bi bi-people me-1"></i>Élèves</button>
+        <button type="button" class="cmd-tab-btn" data-tab="nav"><i class="bi bi-compass me-1"></i>Navigation</button>
+        <button type="button" class="cmd-tab-btn" data-tab="actions"><i class="bi bi-lightning-charge me-1"></i>Actions rapides</button>
+      </div>
+      <div class="cmd-palette-results" id="cmdPaletteResults" role="listbox">
+        <!-- Dynamic results -->
+      </div>
+      <div class="cmd-palette-footer">
+        <div class="d-flex align-items-center gap-3">
+          <span><kbd class="kbd-chip">↑</kbd> <kbd class="kbd-chip">↓</kbd> Naviguer</span>
+          <span><kbd class="kbd-chip">↵</kbd> Ouvrir</span>
+          <span><kbd class="kbd-chip">Esc</kbd> Fermer</span>
+        </div>
+        <span><strong>{{ SCHOOL_NAME }}</strong> — Centre Rapide</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Keyboard Shortcuts Cheat Sheet Modal -->
+  <div class="modal fade" id="shortcutsHelpModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content border-0 shadow-lg" style="border-radius:18px;">
+        <div class="modal-header border-bottom py-3" style="background:#0f172a;color:#fff;">
+          <div class="d-flex align-items-center gap-2">
+            <i class="bi bi-keyboard fs-4 text-primary"></i>
+            <h5 class="modal-title fw-bold text-white mb-0">Raccourcis Clavier du Système</h5>
+          </div>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Fermer"></button>
+        </div>
+        <div class="modal-body p-4">
+          <p class="small text-muted mb-3">Utilisez ces combinaisons pour travailler plus vite sans quitter le clavier :</p>
+          <div class="d-flex flex-column gap-2">
+            <div class="d-flex align-items-center justify-content-between p-2 rounded bg-light border">
+              <span class="small fw-semibold text-dark"><i class="bi bi-search me-2 text-primary"></i>Palette de commandes & Recherche</span>
+              <div><kbd class="kbd-chip">Ctrl</kbd> + <kbd class="kbd-chip">K</kbd></div>
+            </div>
+            <div class="d-flex align-items-center justify-content-between p-2 rounded bg-light border">
+              <span class="small fw-semibold text-dark"><i class="bi bi-cash-coin me-2 text-success"></i>Nouveau paiement (Caisse)</span>
+              <div><kbd class="kbd-chip">Alt</kbd> + <kbd class="kbd-chip">P</kbd></div>
+            </div>
+            <div class="d-flex align-items-center justify-content-between p-2 rounded bg-light border">
+              <span class="small fw-semibold text-dark"><i class="bi bi-person-plus-fill me-2 text-info"></i>Ajouter un élève</span>
+              <div><kbd class="kbd-chip">Alt</kbd> + <kbd class="kbd-chip">N</kbd></div>
+            </div>
+            <div class="d-flex align-items-center justify-content-between p-2 rounded bg-light border">
+              <span class="small fw-semibold text-dark"><i class="bi bi-calendar2-event me-2 text-warning"></i>Sessions du jour</span>
+              <div><kbd class="kbd-chip">Alt</kbd> + <kbd class="kbd-chip">T</kbd></div>
+            </div>
+            <div class="d-flex align-items-center justify-content-between p-2 rounded bg-light border">
+              <span class="small fw-semibold text-dark"><i class="bi bi-calendar3 me-2 text-primary"></i>Planification hebdomadaire</span>
+              <div><kbd class="kbd-chip">Alt</kbd> + <kbd class="kbd-chip">S</kbd></div>
+            </div>
+            <div class="d-flex align-items-center justify-content-between p-2 rounded bg-light border">
+              <span class="small fw-semibold text-dark"><i class="bi bi-whatsapp me-2 text-success"></i>Centre WhatsApp & Alertes</span>
+              <div><kbd class="kbd-chip">Alt</kbd> + <kbd class="kbd-chip">W</kbd></div>
+            </div>
+            <div class="d-flex align-items-center justify-content-between p-2 rounded bg-light border">
+              <span class="small fw-semibold text-dark"><i class="bi bi-question-circle me-2 text-secondary"></i>Afficher cette aide</span>
+              <div><kbd class="kbd-chip">?</kbd> ou <kbd class="kbd-chip">Shift</kbd> + <kbd class="kbd-chip">?</kbd></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
 
   <!-- Toast notification container -->
@@ -2282,17 +2628,312 @@
         }
       });
 
-      // ── Ctrl+K → focus global search ────────────────────────────
-      $(document).on('keydown', function (e) {
-        if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+      // ── Back to Top Button ───────────────────────────────────────
+      const $backToTop = $('#backToTopBtn');
+      $(window).on('scroll', function () {
+        if ($(this).scrollTop() > 280) {
+          $backToTop.addClass('visible');
+        } else {
+          $backToTop.removeClass('visible');
+        }
+      });
+      $backToTop.on('click', function () {
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      });
+
+      // ── Global Keyboard Shortcuts Modal ──────────────────────────
+      $('#openShortcutsBtn').on('click', function () {
+        const modal = new bootstrap.Modal(document.getElementById('shortcutsHelpModal'));
+        modal.show();
+      });
+
+      // ── Command Palette (Ctrl+K) Data & Logic ────────────────────
+      const navItems = [
+        { title: 'Tableau de bord', subtitle: 'Cockpit & Métriques principales', icon: 'bi-speedometer2', url: '{% url "core:cockpit" %}', category: 'nav', shortcut: '' },
+        { title: 'Élèves', subtitle: 'Gestion et annuaire des élèves', icon: 'bi-people-fill', url: '{% url "core:students_list" %}', category: 'nav', shortcut: '' },
+        { title: 'Caisse & Paiements', subtitle: 'Enregistrer des règlements', icon: 'bi-cash-coin', url: '{% url "core:payment_create" %}', category: 'nav', shortcut: 'Alt+P' },
+        { title: 'Sessions du jour', subtitle: 'Appel et suivi des séances du jour', icon: 'bi-calendar2-event-fill', url: '{% url "core:sessions_today" %}', category: 'nav', shortcut: 'Alt+T' },
+        { title: 'Planification hebdomadaire', subtitle: 'Emploi du temps par salle / prof', icon: 'bi-calendar3', url: '{% url "core:sessions_schedule" %}', category: 'nav', shortcut: 'Alt+S' },
+        { title: 'Vue mensuelle', subtitle: 'Calendrier global des cours', icon: 'bi-calendar-month-fill', url: '{% url "core:sessions_monthly" %}', category: 'nav', shortcut: '' },
+        { title: 'Conflits d\'horaires', subtitle: 'Détection des chevauchements', icon: 'bi-exclamation-triangle-fill', url: '{% url "core:schedule_conflicts" %}', category: 'nav', shortcut: '' },
+        { title: 'Hub WhatsApp', subtitle: 'Centre d\'alertes et diffusion', icon: 'bi-whatsapp', url: '{% url "core:whatsapp_dashboard" %}', category: 'nav', shortcut: 'Alt+W' },
+        { title: 'Notifications Planning WhatsApp', subtitle: 'Alertes des modifications de cours', icon: 'bi-bell-fill', url: '{% url "core:whatsapp_schedule_notifications" %}', category: 'nav', shortcut: '' },
+        { title: 'Rappels de paiement WhatsApp', subtitle: 'Relances automatiques aux parents', icon: 'bi-credit-card-fill', url: '{% url "core:whatsapp_payment_reminders" %}', category: 'nav', shortcut: '' },
+        { title: 'Notifications d\'absence WhatsApp', subtitle: 'Avis immédiat aux familles', icon: 'bi-person-x-fill', url: '{% url "core:whatsapp_absence_notifications" %}', category: 'nav', shortcut: '' },
+        { title: 'Groupes de cours', subtitle: 'Matières, niveaux et effectifs', icon: 'bi-book-fill', url: '{% url "core:courses_list" %}', category: 'nav', shortcut: '' },
+        { title: 'Professeurs', subtitle: 'Corps enseignant et affectations', icon: 'bi-person-workspace', url: '{% url "core:teachers_list" %}', category: 'nav', shortcut: '' },
+        { title: 'Paie professeurs', subtitle: 'Décompte des heures et rémunérations', icon: 'bi-calculator-fill', url: '{% url "core:teacher_payroll" %}', category: 'nav', shortcut: '' },
+        { title: 'Cockpit Directeur Analytique', subtitle: 'Analyses stratégiques et statistiques', icon: 'bi-graph-up-arrow', url: '{% url "core:analytics_dashboard" %}', category: 'nav', shortcut: '' }
+      ];
+
+      const actionItems = [
+        { title: 'Nouveau paiement', subtitle: 'Enregistrer une cotisation / mensualité', icon: 'bi-cash-coin', url: '{% url "core:payment_create" %}', category: 'actions', shortcut: 'Alt+P' },
+        { title: 'Ajouter un nouvel élève', subtitle: 'Créer une fiche d\'inscription', icon: 'bi-person-plus-fill', url: '{% url "core:student_create" %}', category: 'actions', shortcut: 'Alt+N' },
+        { title: 'Créer un groupe de cours', subtitle: 'Nouvelle classe ou matière', icon: 'bi-folder-plus', url: '{% url "core:course_group_create" %}', category: 'actions', shortcut: '' },
+        { title: 'Créer une nouvelle séance', subtitle: 'Planifier une session ponctuelle', icon: 'bi-calendar-plus-fill', url: '{% url "core:session_create" %}', category: 'actions', shortcut: '' },
+        { title: 'Raccourcis clavier (?)', subtitle: 'Guide des touches d\'accès rapide', icon: 'bi-keyboard', action: 'showShortcuts', category: 'actions', shortcut: '?' }
+      ];
+
+      let cmdActiveTab = 'all';
+      let cmdSelectedIndex = 0;
+      let cmdStudentXhr = null;
+
+      function openCommandPalette(initialQuery = '') {
+        $('#cmdPaletteBackdrop').addClass('open');
+        $('#cmdPaletteInput').val(initialQuery).focus().select();
+        renderCommandResults();
+      }
+
+      function closeCommandPalette() {
+        $('#cmdPaletteBackdrop').removeClass('open');
+        if (cmdStudentXhr) {
+          cmdStudentXhr.abort();
+          cmdStudentXhr = null;
+        }
+      }
+
+      function renderCommandResults() {
+        const query = $('#cmdPaletteInput').val().trim().toLowerCase();
+        const $container = $('#cmdPaletteResults');
+        $container.empty();
+        cmdSelectedIndex = 0;
+
+        let matchingNav = [];
+        let matchingActions = [];
+
+        if (cmdActiveTab === 'all' || cmdActiveTab === 'nav') {
+          matchingNav = navItems.filter(item => !query || item.title.toLowerCase().includes(query) || item.subtitle.toLowerCase().includes(query));
+        }
+        if (cmdActiveTab === 'all' || cmdActiveTab === 'actions') {
+          matchingActions = actionItems.filter(item => !query || item.title.toLowerCase().includes(query) || item.subtitle.toLowerCase().includes(query));
+        }
+
+        // Render Actions
+        if (matchingActions.length > 0) {
+          $container.append('<div class="cmd-group-label"><i class="bi bi-lightning-charge me-1"></i>Actions Rapides</div>');
+          matchingActions.forEach((item, idx) => {
+            const $el = $(`
+              <div class="cmd-item" data-url="${item.url || ''}" data-action="${item.action || ''}">
+                <div class="cmd-item-left">
+                  <div class="cmd-item-icon" style="background:rgba(16,185,129,0.1);color:#10b981;"><i class="bi ${item.icon}"></i></div>
+                  <div class="cmd-item-text">
+                    <span class="cmd-item-title">${item.title}</span>
+                    <span class="cmd-item-subtitle">${item.subtitle}</span>
+                  </div>
+                </div>
+                <div class="cmd-item-right">
+                  ${item.shortcut ? `<span class="cmd-shortcut-badge">${item.shortcut}</span>` : ''}
+                  <i class="bi bi-chevron-right text-muted small"></i>
+                </div>
+              </div>
+            `);
+            $container.append($el);
+          });
+        }
+
+        // Render Nav Items
+        if (matchingNav.length > 0) {
+          $container.append('<div class="cmd-group-label"><i class="bi bi-compass me-1"></i>Navigation</div>');
+          matchingNav.slice(0, query ? 8 : 6).forEach((item) => {
+            const $el = $(`
+              <div class="cmd-item" data-url="${item.url}">
+                <div class="cmd-item-left">
+                  <div class="cmd-item-icon"><i class="bi ${item.icon}"></i></div>
+                  <div class="cmd-item-text">
+                    <span class="cmd-item-title">${item.title}</span>
+                    <span class="cmd-item-subtitle">${item.subtitle}</span>
+                  </div>
+                </div>
+                <div class="cmd-item-right">
+                  ${item.shortcut ? `<span class="cmd-shortcut-badge">${item.shortcut}</span>` : ''}
+                  <i class="bi bi-arrow-return-left text-muted small"></i>
+                </div>
+              </div>
+            `);
+            $container.append($el);
+          });
+        }
+
+        // If searching students and tab allows it
+        if ((cmdActiveTab === 'all' || cmdActiveTab === 'students') && query.length >= 1) {
+          if (cmdStudentXhr) cmdStudentXhr.abort();
+          $container.append('<div id="cmdStudentGroupLabel" class="cmd-group-label"><i class="bi bi-people me-1"></i>Élèves</div>');
+          $container.append('<div id="cmdStudentLoading" class="p-3 text-center text-muted small"><div class="spinner-border spinner-border-sm text-primary me-2"></div>Recherche des élèves...</div>');
+
+          cmdStudentXhr = $.ajax({
+            url: '{% url "core:student_search" %}',
+            data: { q: query },
+            dataType: 'json',
+            success: function (data) {
+              $('#cmdStudentLoading').remove();
+              if (data.results && data.results.length > 0) {
+                data.results.forEach(student => {
+                  const $el = $(`
+                    <div class="cmd-item" data-url="/students/${student.id}/">
+                      <div class="cmd-item-left">
+                        <div class="cmd-item-icon" style="background:rgba(99,102,241,0.1);color:#6366f1;">
+                          <i class="bi bi-person-fill"></i>
+                        </div>
+                        <div class="cmd-item-text">
+                          <span class="cmd-item-title">${student.text}</span>
+                          <span class="cmd-item-subtitle">Fiche élève · Inscriptions & Paiements</span>
+                        </div>
+                      </div>
+                      <div class="cmd-item-right">
+                        <a href="{% url 'core:payment_create' %}?student=${student.id}" class="btn btn-xs btn-success py-1 px-2 text-white rounded-pill small" style="font-size:11px;" title="Nouveau paiement direct" onclick="event.stopPropagation();">
+                          <i class="bi bi-cash-coin me-1"></i>Payer
+                        </a>
+                        <i class="bi bi-chevron-right text-muted small ms-1"></i>
+                      </div>
+                    </div>
+                  `);
+                  $container.append($el);
+                });
+              } else {
+                $container.append('<div class="p-3 text-center text-muted small">Aucun élève trouvé pour cette recherche.</div>');
+              }
+              highlightSelectedItem();
+            }
+          });
+        }
+
+        highlightSelectedItem();
+      }
+
+      function highlightSelectedItem() {
+        const $items = $('#cmdPaletteResults .cmd-item');
+        $items.removeClass('selected');
+        if ($items.length > 0) {
+          if (cmdSelectedIndex >= $items.length) cmdSelectedIndex = $items.length - 1;
+          if (cmdSelectedIndex < 0) cmdSelectedIndex = 0;
+          $items.eq(cmdSelectedIndex).addClass('selected');
+        }
+      }
+
+      // Input events on Command Palette
+      $('#cmdPaletteInput').on('input', function () {
+        renderCommandResults();
+      });
+
+      // Tabs click
+      $('.cmd-tab-btn').on('click', function () {
+        $('.cmd-tab-btn').removeClass('active');
+        $(this).addClass('active');
+        cmdActiveTab = $(this).data('tab');
+        renderCommandResults();
+      });
+
+      // Keyboard navigation in Command Palette
+      $('#cmdPaletteInput').on('keydown', function (e) {
+        const $items = $('#cmdPaletteResults .cmd-item');
+        if (e.key === 'ArrowDown') {
           e.preventDefault();
-          const $s = $('#global-search');
-          $s.focus().select();
-          // open mobile drawer if search hidden
-          if (!$s.is(':visible')) {
-            $('#mobileNavDrawer').addClass('open');
-            $('#mobileMenuBtn').attr('aria-expanded', 'true');
-            $('#mobile-search').focus().select();
+          if ($items.length > 0) {
+            cmdSelectedIndex = (cmdSelectedIndex + 1) % $items.length;
+            highlightSelectedItem();
+            $items.eq(cmdSelectedIndex)[0].scrollIntoView({ block: 'nearest' });
+          }
+        } else if (e.key === 'ArrowUp') {
+          e.preventDefault();
+          if ($items.length > 0) {
+            cmdSelectedIndex = (cmdSelectedIndex - 1 + $items.length) % $items.length;
+            highlightSelectedItem();
+            $items.eq(cmdSelectedIndex)[0].scrollIntoView({ block: 'nearest' });
+          }
+        } else if (e.key === 'Enter') {
+          e.preventDefault();
+          if ($items.length > 0 && cmdSelectedIndex >= 0) {
+            const $selected = $items.eq(cmdSelectedIndex);
+            const action = $selected.data('action');
+            const url = $selected.data('url');
+            if (action === 'showShortcuts') {
+              closeCommandPalette();
+              const modal = new bootstrap.Modal(document.getElementById('shortcutsHelpModal'));
+              modal.show();
+            } else if (url) {
+              window.location.href = url;
+            }
+          }
+        } else if (e.key === 'Escape') {
+          closeCommandPalette();
+        }
+      });
+
+      // Click on results
+      $(document).on('click', '#cmdPaletteResults .cmd-item', function () {
+        const action = $(this).data('action');
+        const url = $(this).data('url');
+        if (action === 'showShortcuts') {
+          closeCommandPalette();
+          const modal = new bootstrap.Modal(document.getElementById('shortcutsHelpModal'));
+          modal.show();
+        } else if (url) {
+          window.location.href = url;
+        }
+      });
+
+      $('#cmdPaletteCloseBtn').on('click', closeCommandPalette);
+      $('#cmdPaletteBackdrop').on('click', function (e) {
+        if ($(e.target).is('#cmdPaletteBackdrop')) closeCommandPalette();
+      });
+
+      // Intercept Global search click to open Palette
+      $('#global-search').on('focus click', function (e) {
+        e.preventDefault();
+        openCommandPalette($(this).val());
+      });
+      $('#mobileSearchToggle').on('click', function (e) {
+        e.preventDefault();
+        openCommandPalette();
+      });
+
+      // ── Global Hotkeys ────────────────────────────────────────────
+      $(document).on('keydown', function (e) {
+        const isInput = $(e.target).is('input, textarea, select, [contenteditable="true"]');
+
+        // Ctrl+K / Cmd+K
+        if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+          e.preventDefault();
+          if ($('#cmdPaletteBackdrop').hasClass('open')) {
+            closeCommandPalette();
+          } else {
+            openCommandPalette();
+          }
+          return;
+        }
+
+        // Global hotkeys with Alt
+        if (e.altKey && !e.ctrlKey && !e.metaKey) {
+          const key = e.key.toLowerCase();
+          if (key === 'p') {
+            e.preventDefault();
+            window.location.href = '{% url "core:payment_create" %}';
+          } else if (key === 'n') {
+            e.preventDefault();
+            window.location.href = '{% url "core:student_create" %}';
+          } else if (key === 't') {
+            e.preventDefault();
+            window.location.href = '{% url "core:sessions_today" %}';
+          } else if (key === 's') {
+            e.preventDefault();
+            window.location.href = '{% url "core:sessions_schedule" %}';
+          } else if (key === 'w') {
+            e.preventDefault();
+            window.location.href = '{% url "core:whatsapp_dashboard" %}';
+          }
+        }
+
+        // '?' hotkey for shortcuts modal (when not typing in an input)
+        if (e.key === '?' && !isInput && !e.ctrlKey && !e.metaKey && !e.altKey) {
+          e.preventDefault();
+          const modal = new bootstrap.Modal(document.getElementById('shortcutsHelpModal'));
+          modal.show();
+        }
+
+        // Escape
+        if (e.key === 'Escape') {
+          if ($('#cmdPaletteBackdrop').hasClass('open')) {
+            closeCommandPalette();
           }
         }
       });
@@ -2317,7 +2958,7 @@
       const el = document.createElement('div');
       el.className = 'erp-toast ' + type;
       el.setAttribute('role', 'status');
-      el.innerHTML = `<i class="bi ${icons[type] || icons.info}" aria-hidden="true"></i> ${msg}`;
+      el.innerHTML = `<i class="bi ${icons[type] || icons.info}" aria-hidden="true"></i> <span>${msg}</span>`;
       document.getElementById('toast-container').appendChild(el);
       setTimeout(() => {
         el.style.animation = 'toast-out 0.25s ease forwards';

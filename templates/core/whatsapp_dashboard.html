@@ -146,7 +146,7 @@
   <div class="row g-4 justify-content-center">
     
     <!-- 1. Payment Remaining Card -->
-    <div class="col-md-4">
+    <div class="col-lg-3 col-md-6">
       <a href="{% url 'core:whatsapp_payment_reminders' %}" class="whatsapp-card card-link">
         <div class="whatsapp-card-content">
           <div class="whatsapp-card-icon-wrapper payment-theme">
@@ -165,13 +165,13 @@
     </div>
 
     <!-- 2. Absence Card -->
-    <div class="col-md-4">
+    <div class="col-lg-3 col-md-6">
       <a href="{% url 'core:whatsapp_absence_notifications' %}" class="whatsapp-card card-link">
         <div class="whatsapp-card-content">
           <div class="whatsapp-card-icon-wrapper absence-theme">
             <i class="bi bi-person-x-fill"></i>
           </div>
-          <h3 class="whatsapp-card-title">Notifications d'Absence</h3>
+          <h3 class="whatsapp-card-title">Absences</h3>
           <p class="whatsapp-card-text">
             Informez immédiatement les parents d'élèves de l'absence de leur enfant au cours du jour.
           </p>
@@ -183,8 +183,38 @@
       </a>
     </div>
 
-    <!-- 3. Bulk Announcements Card -->
-    <div class="col-md-4">
+    <!-- 3. Schedule Changes Notifications Card (Traiter les notifications) -->
+    <div class="col-lg-3 col-md-6">
+      <a href="{% url 'core:whatsapp_schedule_notifications' %}" class="whatsapp-card card-link position-relative">
+        <div class="whatsapp-card-content">
+          <div class="d-flex justify-content-between align-items-start w-100 mb-3">
+            <div class="whatsapp-card-icon-wrapper schedule-theme mb-0">
+              <i class="bi bi-bell-fill"></i>
+            </div>
+            {% if unhandled_changes_count > 0 %}
+              <span class="badge bg-danger rounded-pill px-2 py-1 shadow-sm" style="font-size: 0.75rem;">
+                {{ unhandled_changes_count }} en attente
+              </span>
+            {% else %}
+              <span class="badge bg-success-subtle text-success-emphasis border border-success-subtle rounded-pill px-2 py-1" style="font-size: 0.75rem;">
+                <i class="bi bi-check-circle me-1"></i> À jour
+              </span>
+            {% endif %}
+          </div>
+          <h3 class="whatsapp-card-title">Planning & Séances</h3>
+          <p class="whatsapp-card-text">
+            Traitez et envoyez les alertes de modifications de séances aux professeurs et parents.
+          </p>
+          <div class="whatsapp-card-footer">
+            <span>Traiter notifications</span>
+            <i class="bi bi-arrow-right"></i>
+          </div>
+        </div>
+      </a>
+    </div>
+
+    <!-- 4. Bulk Announcements Card -->
+    <div class="col-lg-3 col-md-6">
       <a href="{% url 'core:whatsapp_bulk_announcements' %}" class="whatsapp-card card-link">
         <div class="whatsapp-card-content">
           <div class="whatsapp-card-icon-wrapper bulk-theme">
@@ -426,6 +456,11 @@
 .bulk-theme {
   background-color: rgba(16, 185, 129, 0.08);
   color: #10b981;
+}
+
+.schedule-theme {
+  background-color: rgba(99, 102, 241, 0.08);
+  color: #6366f1;
 }
 
 .whatsapp-card-title {

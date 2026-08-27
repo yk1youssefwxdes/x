@@ -287,6 +287,12 @@
                    title="Encaisser" aria-label="Encaisser un paiement pour {{ student.name }}">
                   <i class="bi bi-cash-coin" aria-hidden="true"></i>
                 </a>
+                {% if student.parent_contact %}
+                <a href="https://wa.me/212{{ student.parent_contact|cut:' '|cut:'-'|cut:'.'|slice:'-9:' }}" target="_blank" class="btn btn-sm btn-outline-success"
+                   title="Contacter sur WhatsApp" aria-label="WhatsApp pour {{ student.name }}">
+                  <i class="bi bi-whatsapp" aria-hidden="true"></i>
+                </a>
+                {% endif %}
                 <a href="{% url 'core:student_edit' student.id %}" class="btn btn-sm btn-outline-secondary"
                    title="Éditer" aria-label="Éditer le profil de {{ student.name }}">
                   <i class="bi bi-pencil" aria-hidden="true"></i>

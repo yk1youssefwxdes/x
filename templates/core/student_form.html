@@ -234,6 +234,25 @@
             </div>
           </div>
 
+          {% if not student %}
+          <div class="card mb-4" style="border:1px dashed var(--primary); background: color-mix(in srgb, var(--primary) 4%, white);">
+            <div class="card-body py-2 px-3 d-flex align-items-center justify-content-between">
+              <div class="d-flex align-items-center gap-2">
+                <i class="bi bi-cash-coin text-success fs-5" aria-hidden="true"></i>
+                <div>
+                  <label class="form-check-label fw-bold mb-0" for="{{ form.create_payment.id_for_label }}" style="cursor:pointer;">
+                    {{ form.create_payment.label }}
+                  </label>
+                  <div class="text-muted small">Redirige vers l'encaissement et l'envoi auto des liens WhatsApp</div>
+                </div>
+              </div>
+              <div class="form-check form-switch mb-0">
+                {{ form.create_payment }}
+              </div>
+            </div>
+          </div>
+          {% endif %}
+
         </div>
 
         <!-- Right column: Groupes de cours -->

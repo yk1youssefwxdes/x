@@ -451,6 +451,7 @@ class SystemSettingsTestCase(TestCase):
             'RECEIPT_FOOTER_THANK_YOU': 'Merci de votre visite !',
             'WHATSAPP_SESSION_NOTIFICATIONS_ENABLED': 'on',
             'WHATSAPP_AUTO_ABSENCE_NOTIFICATIONS': 'on',
+            'WHATSAPP_AUTO_GROUP_INVITE_ON_FIRST_PAYMENT': 'on',
             'KIOSK_TIMEOUT': 60,
             'KIOSK_SEARCH_ENABLED': 'on',
             'DEFAULT_TEACHER_PAYMENT_METHOD': 'HOURLY',
@@ -463,6 +464,396 @@ class SystemSettingsTestCase(TestCase):
         self.assertEqual(get_setting('CURRENCY_SYMBOL'), 'EUR')
         self.assertEqual(get_setting('LATE_PAYMENT_GRACE_DAYS'), '7')
         self.assertEqual(get_setting('DEFAULT_TEACHER_PAYMENT_METHOD'), 'HOURLY')
+
+
+class SchedulingAutoSaveAndHandlingTestCase(TestCase):
+    def setUp(self):
+        self.user = get_user_model().objects.create_superuser(
+            username='admin_sched',
+            password='password123',
+            email='admin@test.com'
+        )
+        self.client.login(username='admin_sched', password='password123')
+
+        self.room1 = Room.objects.create(name='Salle Alpha', capacity=15)
+        self.room2 = Room.objects.create(name='Salle Beta', capacity=20)
+        self.teacher = Teacher.objects.create(
+            name='Professeur Principal',
+            phone='0611223344',
+            payment_method='PERCENTAGE',
+            payment_percentage=Decimal('50.00')
+        )
+        self.sub_teacher = Teacher.objects.create(
+            name='Professeur Remplaçant',
+            phone='0655667788',
+            payment_method='PERCENTAGE',
+            payment_percentage=Decimal('50.00')
+        )
+        self.group = CourseGroup.objects.create(
+            name='Groupe Physique',
+            subject='Physique',
+            monthly_price=Decimal('150.00'),
+            teacher=self.teacher
+        )
+        self.student = Student.objects.create(
+            name='Karim Alami',
+            phone='0699887766',
+            parent_contact='0688776655'
+        )
+        self.group.students.add(self.student)
+
+        self.session = Session.objects.create(
+            group=self.group,
+            date=date(2026, 9, 10),
+            start_time=time(10, 0),
+            end_time=time(12, 0),
+            room=self.room1,
+            status='PLANNED'
+        )
+
+    def test_session_update_auto_saves_as_unhandled(self):
+        """Updating a session via session_update_ajax saves changes and creates an unhandled change history record."""
+        initial_unhandled = AuditService.get_unhandled_count()
+
+        res = self.client.post(f'/sessions/{self.session.id}/update-ajax/', {
+            'date': '2026-09-11',
+            'start_time': '11:00',
+            'end_time': '13:00',
+            'room_id': self.room2.id,
+            'scope': 'only_this',
+            'change_reason': 'Déplacement test'
+        })
+        self.assertEqual(res.status_code, 200)
+        data = res.json()
+        self.assertTrue(data['success'])
+        self.assertEqual(data['unhandled_count'], initial_unhandled + 1)
+
+        # Check DB was auto-saved
+        self.session.refresh_from_db()
+        self.assertEqual(self.session.date, date(2026, 9, 11))
+        self.assertEqual(self.session.start_time, time(11, 0))
+        self.assertEqual(self.session.room, self.room2)
+
+        # Check unhandled history record exists
+        unhandled = AuditService.get_unhandled_changes(session_id=self.session.id)
+        self.assertEqual(unhandled.count(), 1)
+        record = unhandled.first()
+        self.assertFalse(record.is_handled)
+        self.assertEqual(record.change_reason, 'Déplacement test')
+        self.assertIn(self.session.id, AuditService.get_unhandled_session_ids())
+
+    def test_schedule_unhandled_changes_ajax_endpoint(self):
+        """schedule_unhandled_changes_ajax returns formatted unhandled changes."""
+        AuditService.log_change(
+            session=self.session,
+            user=self.user,
+            action='manual_override',
+            previous_values={'date': '2026-09-10'},
+            new_values={'date': '2026-09-12'},
+            change_reason='Test reason',
+            is_handled=False
+        )
+
+        res = self.client.get('/schedule/unhandled-changes-ajax/')
+        self.assertEqual(res.status_code, 200)
+        data = res.json()
+        self.assertTrue(data['success'])
+        self.assertGreaterEqual(data['count'], 1)
+        item = [c for c in data['changes'] if c['session_id'] == self.session.id][0]
+        self.assertEqual(item['group_name'], 'Groupe Physique')
+        self.assertEqual(item['change_reason'], 'Test reason')
+
+    def test_handle_changes_send_all(self):
+        """schedule_handle_changes_ajax with send_all marks all changes as handled and sets handled_at."""
+        h1 = AuditService.log_change(
+            session=self.session,
+            user=self.user,
+            action='manual_override',
+            previous_values={'room': 'Salle Alpha'},
+            new_values={'room': 'Salle Beta'},
+            change_reason='Salle change',
+            is_handled=False
+        )
+
+        res = self.client.post('/schedule/handle-changes-ajax/', {
+            'action': 'send_all',
+            'notify_teachers': '1',
+            'notify_students': '1'
+        })
+        self.assertEqual(res.status_code, 200)
+        data = res.json()
+        self.assertTrue(data['success'])
+        self.assertGreaterEqual(data['handled_count'], 1)
+        self.assertEqual(data['unhandled_count'], 0)
+
+        h1.refresh_from_db()
+        self.assertTrue(h1.is_handled)
+        self.assertIsNotNone(h1.handled_at)
+
+    def test_handle_changes_send_selected(self):
+        """schedule_handle_changes_ajax with send_selected marks only the specified changes as handled."""
+        h1 = AuditService.log_change(
+            session=self.session,
+            user=self.user,
+            action='manual_override',
+            previous_values={'room': 'Salle Alpha'},
+            new_values={'room': 'Salle Beta'},
+            is_handled=False
+        )
+        h2 = AuditService.log_change(
+            session=self.session,
+            user=self.user,
+            action='manual_override',
+            previous_values={'start_time': '10:00'},
+            new_values={'start_time': '11:00'},
+            is_handled=False
+        )
+
+        res = self.client.post('/schedule/handle-changes-ajax/', {
+            'action': 'send_selected',
+            'history_ids': str(h1.id),
+            'notify_teachers': '1',
+            'notify_students': '1'
+        })
+        self.assertEqual(res.status_code, 200)
+        data = res.json()
+        self.assertTrue(data['success'])
+        self.assertEqual(data['handled_count'], 1)
+
+        h1.refresh_from_db()
+        h2.refresh_from_db()
+        self.assertTrue(h1.is_handled)
+        self.assertFalse(h2.is_handled)
+
+    def test_handle_changes_mark_handled_silent(self):
+        """schedule_handle_changes_ajax with mark_handled_silent marks changes as handled without notifications."""
+        h1 = AuditService.log_change(
+            session=self.session,
+            user=self.user,
+            action='manual_override',
+            previous_values={'notes': ''},
+            new_values={'notes': 'Silent note update'},
+            is_handled=False
+        )
+
+        res = self.client.post('/schedule/handle-changes-ajax/', {
+            'action': 'mark_handled_silent',
+            'history_ids': str(h1.id)
+        })
+        self.assertEqual(res.status_code, 200)
+        data = res.json()
+        self.assertTrue(data['success'])
+        self.assertEqual(data['notifications_sent'], 0)
+
+        h1.refresh_from_db()
+        self.assertTrue(h1.is_handled)
+        self.assertIsNotNone(h1.handled_at)
+
+    def test_whatsapp_schedule_notifications_page(self):
+        """Test the dedicated WhatsApp schedule notifications page renders with context data."""
+        AuditService.log_change(
+            session=self.session,
+            user=self.user,
+            action='manual_override',
+            previous_values={'room': 'Salle Alpha'},
+            new_values={'room': 'Salle Beta'},
+            change_reason='Salle change',
+            is_handled=False
+        )
+
+        res = self.client.get('/whatsapp/schedule-notifications/')
+        self.assertEqual(res.status_code, 200)
+        self.assertTemplateUsed(res, 'core/whatsapp_schedule_notifications.html')
+        self.assertGreaterEqual(res.context['unhandled_count'], 1)
+        self.assertEqual(res.context['students_affected'], 1)
+        self.assertEqual(res.context['teachers_affected'], 1)
+
+    def test_whatsapp_dashboard_has_schedule_notifications_link(self):
+        """Test the WhatsApp dashboard renders the Planning & Séances notifications card."""
+        res = self.client.get('/whatsapp/')
+        self.assertEqual(res.status_code, 200)
+        self.assertContains(res, '/whatsapp/schedule-notifications/')
+        self.assertContains(res, 'Planning & Séances')
+
+    def test_session_detail_ajax_today_is_editable(self):
+        """Test that sessions on today's date return is_future=True and is_editable=True."""
+        today_session = Session.objects.create(
+            group=self.group,
+            date=timezone.now().date(),
+            start_time=time(14, 0),
+            end_time=time(16, 0),
+            room=self.room1,
+            status='PLANNED'
+        )
+        res = self.client.get(f'/sessions/{today_session.id}/detail-ajax/')
+        self.assertEqual(res.status_code, 200)
+        data = res.json()
+        self.assertTrue(data['is_future'])
+        self.assertTrue(data['is_editable'])
+        self.assertTrue(data['is_today'])
+
+    def test_whatsapp_absence_notifications_no_duplicates(self):
+        """Test that a student with multiple phone numbers or records only appears once in absence notifications."""
+        from core.models import Attendance
+        self.student.parent_contact = '0612345678'
+        self.student.parent_contact_2 = '0687654321'
+        self.student.save()
+
+        today = timezone.now().date()
+        Attendance.objects.create(
+            student=self.student,
+            course_group=self.group,
+            date=today,
+            is_present=False
+        )
+
+        res = self.client.get(f'/whatsapp/absence-notifications/?date={today}')
+        self.assertEqual(res.status_code, 200)
+        contacts = res.context['absence_contacts']
+        student_ids = [c['student'].id for c in contacts]
+        # Verify student only appears once
+        self.assertEqual(student_ids.count(self.student.id), 1)
+
+    def test_whatsapp_send_ajax_auto_resolves_history(self):
+        """Test that sending a message with history_id marks that history entry as handled."""
+        from unittest.mock import patch
+        h = AuditService.log_change(
+            session=self.session,
+            user=self.user,
+            action='manual_override',
+            previous_values={'room': 'Salle Alpha'},
+            new_values={'room': 'Salle Beta'},
+            is_handled=False
+        )
+
+        with patch('core.utils.WhatsAppServiceAPI.send_message', return_value={'success': True, 'messageId': 'test-123'}):
+            res = self.client.post('/whatsapp/send/', {
+                'phone': '0611223344',
+                'message': 'Test change message',
+                'message_type': 'session_reminder',
+                'history_id': str(h.id)
+            })
+        self.assertEqual(res.status_code, 200)
+        h.refresh_from_db()
+        self.assertTrue(h.is_handled)
+        self.assertIsNotNone(h.handled_at)
+
+
+class WhatsAppGroupInviteTestCase(TestCase):
+    def setUp(self):
+        self.teacher = Teacher.objects.create(name="Professeur Test", phone="0611223344")
+        self.group1 = CourseGroup.objects.create(
+            name="Groupe Math BAC",
+            subject="Mathématiques",
+            monthly_price=Decimal("400.00"),
+            teacher=self.teacher,
+            whatsapp_group_link="https://chat.whatsapp.com/TEST_MATH_GROUP",
+            is_active=True
+        )
+        self.group2 = CourseGroup.objects.create(
+            name="Groupe Physique BAC",
+            subject="Physique",
+            monthly_price=Decimal("400.00"),
+            teacher=self.teacher,
+            whatsapp_group_link="",
+            is_active=True
+        )
+        self.student = Student.objects.create(
+            name="Youssef Alami",
+            parent_name="Ahmed Alami",
+            parent_contact="0661234567",
+            phone="0671234567"
+        )
+        from core.utils import set_setting
+        set_setting('WHATSAPP_AUTO_GROUP_INVITE_ON_FIRST_PAYMENT', 'True')
+
+    def test_auto_send_group_invite_on_first_payment(self):
+        from unittest.mock import patch
+        from core.models import Enrollment, Payment, WhatsAppSendLog
+
+        enrollment1 = Enrollment.objects.create(student=self.student, course_group=self.group1)
+        enrollment2 = Enrollment.objects.create(student=self.student, course_group=self.group2)
+
+        self.assertFalse(enrollment1.whatsapp_invite_sent)
+        self.assertFalse(enrollment2.whatsapp_invite_sent)
+
+        # First payment
+        with patch('core.utils.WhatsAppServiceAPI.send_message', return_value={'success': True, 'messageId': 'msg-101'}) as mock_send:
+            payment1 = Payment.objects.create(
+                student=self.student,
+                amount=Decimal("400.00"),
+                payment_date=timezone.now().date(),
+                month_covered=timezone.now().date().replace(day=1),
+                status='PAID'
+            )
+
+            # Check that send_message was called with the group link
+            self.assertTrue(mock_send.called)
+            called_args, called_kwargs = mock_send.call_args
+            called_message = called_args[1] if len(called_args) > 1 else called_kwargs.get('message', '')
+            self.assertIn("https://chat.whatsapp.com/TEST_MATH_GROUP", called_message)
+            self.assertIn("Groupe Math BAC", called_message)
+
+        enrollment1.refresh_from_db()
+        self.assertTrue(enrollment1.whatsapp_invite_sent)
+
+        # Verify WhatsAppSendLog was created with message_type 'group_invite'
+        log = WhatsAppSendLog.objects.filter(student=self.student, message_type='group_invite').first()
+        self.assertIsNotNone(log)
+        self.assertEqual(log.status, 'SENT')
+
+        # Second payment should NOT re-send WhatsApp group invites
+        with patch('core.utils.WhatsAppServiceAPI.send_message', return_value={'success': True, 'messageId': 'msg-102'}) as mock_send_2:
+            payment2 = Payment.objects.create(
+                student=self.student,
+                amount=Decimal("400.00"),
+                payment_date=timezone.now().date(),
+                month_covered=timezone.now().date().replace(day=1),
+                status='PAID'
+            )
+            mock_send_2.assert_not_called()
+
+    def test_group_without_invite_link_skipped(self):
+        from unittest.mock import patch
+        from core.models import Enrollment, Payment
+
+        # Enroll only in group2 (which has no whatsapp_group_link)
+        enrollment = Enrollment.objects.create(student=self.student, course_group=self.group2)
+
+        with patch('core.utils.WhatsAppServiceAPI.send_message', return_value={'success': True}) as mock_send:
+            Payment.objects.create(
+                student=self.student,
+                amount=Decimal("400.00"),
+                payment_date=timezone.now().date(),
+                month_covered=timezone.now().date().replace(day=1),
+                status='PAID'
+            )
+            mock_send.assert_not_called()
+
+    def test_disabled_setting_skips_invite(self):
+        from unittest.mock import patch
+        from core.models import Enrollment, Payment, SystemSetting
+
+        SystemSetting.objects.update_or_create(
+            key='WHATSAPP_AUTO_GROUP_INVITE_ON_FIRST_PAYMENT',
+            defaults={'value': 'False'}
+        )
+        from django.core.cache import cache
+        cache.delete('sys_setting_WHATSAPP_AUTO_GROUP_INVITE_ON_FIRST_PAYMENT')
+
+        Enrollment.objects.create(student=self.student, course_group=self.group1)
+
+        with patch('core.utils.WhatsAppServiceAPI.send_message', return_value={'success': True}) as mock_send:
+            Payment.objects.create(
+                student=self.student,
+                amount=Decimal("400.00"),
+                payment_date=timezone.now().date(),
+                month_covered=timezone.now().date().replace(day=1),
+                status='PAID'
+            )
+            mock_send.assert_not_called()
+
+
 
 
 

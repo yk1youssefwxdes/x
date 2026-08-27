@@ -92,6 +92,9 @@ urlpatterns = [
     path('sessions/<int:session_id>/history/', views.session_history_view, name='session_history'),
     path('sessions/exceptions/', views.session_exceptions_list, name='session_exceptions_list'),
     path('sessions/search-ajax/', views.sessions_search_ajax, name='sessions_search_ajax'),
+    path('schedule/unhandled-changes-ajax/', views.schedule_unhandled_changes_ajax, name='schedule_unhandled_changes_ajax'),
+    path('schedule/handle-changes-ajax/', views.schedule_handle_changes_ajax, name='schedule_handle_changes_ajax'),
+
 
     
     # Cashier
@@ -132,6 +135,11 @@ urlpatterns = [
     path('whatsapp/session-reminder/<int:session_id>/', 
          views.whatsapp_session_reminder, 
          name='whatsapp_session_reminder'),
+    
+    # WhatsApp Scheduling Notifications (Traiter les notifications)
+    path('whatsapp/schedule-notifications/', 
+         views.whatsapp_schedule_notifications, 
+         name='whatsapp_schedule_notifications'),
     
     # WhatsApp AJAX Link Generator
     path('whatsapp/generate-link/', 

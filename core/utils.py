@@ -39,6 +39,7 @@ DEFAULT_SETTINGS = {
     'WHATSAPP_SERVICE_PORT': '3000',
     'WHATSAPP_SESSION_NOTIFICATIONS_ENABLED': 'True',
     'WHATSAPP_AUTO_ABSENCE_NOTIFICATIONS': 'True',
+    'WHATSAPP_AUTO_GROUP_INVITE_ON_FIRST_PAYMENT': 'True',
     'KIOSK_TIMEOUT': '45',
     'KIOSK_SEARCH_ENABLED': 'True',
     'CONFLICT_CACHE_TTL': '120',
@@ -2180,6 +2181,15 @@ DEFAULT_TEMPLATES = {
         "Cordialement,\n"
         "L'équipe administrative"
     ),
+    'whatsapp_group_invite.txt': (
+        "Bonjour {name} 👋,\n\n"
+        "Bienvenue chez {school_name} !\n\n"
+        "Voici le(s) lien(s) pour rejoindre le(s) groupe(s) WhatsApp de {student_name} :\n\n"
+        "{group_links}\n\n"
+        "Merci de rejoindre vos groupes pour recevoir les annonces et le suivi des cours.\n\n"
+        "Cordialement,\n"
+        "L'équipe administrative"
+    ),
     'whatsapp_session_cancellation.txt': (
         "Séance annulée\n\n"
         "Groupe : {group_name}\n"
@@ -2832,6 +2842,115 @@ class WhatsAppServiceAPI:
                 'success': False,
                 'error': str(e)
             }
+
+
+def get_student_pending_group_invites(student, enrollments=None):
+    """
+    Returns active enrollments for a student that have a whatsapp_group_link
+    and where whatsapp_invite_sent is False.
+    """
+    from .models import Enrollment
+    if enrollments is None:
+        enrollments = list(
+            Enrollment.objects.filter(
+                student=student,
+                is_active=True,
+                whatsapp_invite_sent=False
+            ).select_related('course_group')
+        )
+    else:
+        enrollments = [e for e in enrollments if e.is_active and not e.whatsapp_invite_sent]
+
+    return [
+        e for e in enrollments
+        if e.course_group and e.course_group.whatsapp_group_link and e.course_group.whatsapp_group_link.strip()
+    ]
+
+
+def send_whatsapp_group_invites(student, enrollments=None) -> list:
+    """
+    Auto-sends WhatsApp group invite links for student's enrolled groups that have
+    a whatsapp_group_link set and where whatsapp_invite_sent is False.
+    Marks enrollments as whatsapp_invite_sent=True and writes to WhatsAppSendLog.
+    Returns list of sent log instances (or empty list if no pending links or disabled).
+    """
+    from .models import Enrollment, WhatsAppSendLog
+
+    auto_enabled = get_setting('WHATSAPP_AUTO_GROUP_INVITE_ON_FIRST_PAYMENT', 'True')
+    if str(auto_enabled).lower() not in ('true', '1', 'yes', 'on'):
+        return []
+
+    pending_with_links = get_student_pending_group_invites(student, enrollments=enrollments)
+    if not pending_with_links:
+        return []
+
+    # Build group link lines
+    lines = []
+    for e in pending_with_links:
+        grp = e.course_group
+        subject_info = f" ({grp.subject})" if grp.subject else ""
+        lines.append(f"• {grp.name}{subject_info} : {grp.whatsapp_group_link.strip()}")
+    group_links_text = "\n".join(lines)
+
+    school_name = get_setting('SCHOOL_NAME', getattr(settings, 'SCHOOL_NAME', 'Centre Tonaroz'))
+    parent_name = student.parent_name or "Parent"
+
+    default_template = (
+        "Bonjour {name} 👋,\n\n"
+        "Bienvenue chez {school_name} !\n\n"
+        "Voici le(s) lien(s) pour rejoindre le(s) groupe(s) WhatsApp de {student_name} :\n\n"
+        "{group_links}\n\n"
+        "Merci de rejoindre vos groupes pour recevoir les annonces et le suivi des cours.\n\n"
+        "Cordialement,\n"
+        "L'équipe administrative"
+    )
+
+    template_str = load_message_template('whatsapp_group_invite.txt', default_template)
+    message = template_str.format_map(SafeDict({
+        'name': parent_name,
+        'student_name': student.name,
+        'school_name': school_name,
+        'group_links': group_links_text,
+    }))
+
+    # Deduplicate recipient phone numbers: parent_contact, parent_contact_2, student.phone
+    raw_phones = [student.parent_contact, student.parent_contact_2, student.phone]
+    seen_cleaned = set()
+    valid_phones = []
+    for p in raw_phones:
+        if p and p.strip():
+            cleaned = WhatsAppUtils.clean_phone_number(p.strip())
+            if cleaned and cleaned not in seen_cleaned:
+                seen_cleaned.add(cleaned)
+                valid_phones.append(p.strip())
+
+    if not valid_phones:
+        return []
+
+    logs = []
+    for phone in valid_phones:
+        res = WhatsAppServiceAPI.send_message(phone, message)
+        success = bool(res and res.get('success'))
+        error_msg = '' if success else (res.get('error', '') if res else 'No response')
+
+        log = WhatsAppSendLog.objects.create(
+            student=student,
+            phone=phone,
+            message_type='group_invite',
+            message_preview=message[:300],
+            status='SENT' if success else 'FAILED',
+            error_message=error_msg,
+        )
+        logs.append(log)
+
+    # Mark enrollments as having their invite link sent
+    enrollment_ids = [e.id for e in pending_with_links]
+    Enrollment.objects.filter(id__in=enrollment_ids).update(whatsapp_invite_sent=True)
+    for e in pending_with_links:
+        e.whatsapp_invite_sent = True
+
+    return logs
+
 
 
 

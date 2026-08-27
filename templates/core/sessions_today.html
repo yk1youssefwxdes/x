@@ -234,21 +234,21 @@
   </a>
 </div>
 
-<!-- ── Quick stats ────────────────────────────────────────────────── -->
+<!-- ── Interactive Status Filter Pills ────────────────────────── -->
 <div class="quick-stats mb-3">
-  <div class="qs-card">
+  <div class="qs-card filter-card active cursor-pointer" data-filter="all" role="button" tabindex="0" title="Afficher toutes les sessions">
     <div class="qs-num" style="color:var(--text-primary);">{{ stats.total }}</div>
-    <div class="qs-label">Total</div>
+    <div class="qs-label">Toutes</div>
   </div>
-  <div class="qs-card">
+  <div class="qs-card filter-card cursor-pointer" data-filter="planned" role="button" tabindex="0" title="Filtrer les sessions prévues">
     <div class="qs-num" style="color:#3b82f6;">{{ stats.planned }}</div>
     <div class="qs-label">Prévues</div>
   </div>
-  <div class="qs-card">
+  <div class="qs-card filter-card cursor-pointer" data-filter="done" role="button" tabindex="0" title="Filtrer les sessions terminées">
     <div class="qs-num" style="color:#10b981;">{{ stats.done }}</div>
     <div class="qs-label">Terminées</div>
   </div>
-  <div class="qs-card">
+  <div class="qs-card filter-card cursor-pointer" data-filter="cancelled" role="button" tabindex="0" title="Filtrer les sessions annulées">
     <div class="qs-num" style="color:#ef4444;">{{ stats.cancelled }}</div>
     <div class="qs-label">Annulées</div>
   </div>
@@ -403,16 +403,52 @@ document.addEventListener('DOMContentLoaded', function () {
     }
   }
 
-  // Keyboard shortcut: T to reset/go to today's date
+  // ── Client-side Instant Filter by Status ─────────────────────
+  const filterCards = document.querySelectorAll('.filter-card');
+  const sessionCards = document.querySelectorAll('.session-card');
+
+  filterCards.forEach(card => {
+    card.addEventListener('click', function () {
+      filterCards.forEach(c => c.style.boxShadow = 'var(--shadow-xs)', c.style.borderColor = 'var(--border)');
+      this.style.boxShadow = '0 0 0 2px var(--primary)';
+      this.style.borderColor = 'var(--primary)';
+
+      const filter = this.getAttribute('data-filter');
+      sessionCards.forEach(sCard => {
+        const col = sCard.closest('.col-12');
+        if (filter === 'all') {
+          col.style.display = '';
+        } else if (filter === 'planned') {
+          col.style.display = sCard.classList.contains('status-planned') ? '' : 'none';
+        } else if (filter === 'done') {
+          col.style.display = sCard.classList.contains('status-done') ? '' : 'none';
+        } else if (filter === 'cancelled') {
+          col.style.display = sCard.classList.contains('status-cancelled') ? '' : 'none';
+        }
+      });
+    });
+  });
+
+  // ── Keyboard Navigation (Alt+Left, Alt+Right, T for today) ────
   document.addEventListener('keydown', function (e) {
     const activeEl = document.activeElement;
     if (activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA' || activeEl.tagName === 'SELECT' || activeEl.isContentEditable)) {
       return;
     }
-    if (e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) {
-      return;
-    }
-    if (e.key.toLowerCase() === 't') {
+
+    if ((e.altKey && e.key === 'ArrowLeft') || (e.key === 'j' && !e.ctrlKey && !e.metaKey && !e.altKey)) {
+      const prevBtn = document.querySelector('a[title="Jour précédent"]');
+      if (prevBtn) {
+        e.preventDefault();
+        window.location.href = prevBtn.href;
+      }
+    } else if ((e.altKey && e.key === 'ArrowRight') || (e.key === 'k' && !e.ctrlKey && !e.metaKey && !e.altKey)) {
+      const nextBtn = document.querySelector('a[title="Jour suivant"]');
+      if (nextBtn) {
+        e.preventDefault();
+        window.location.href = nextBtn.href;
+      }
+    } else if (e.key.toLowerCase() === 't' && !e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey) {
       e.preventDefault();
       window.location.href = "{% url 'core:sessions_today' %}";
     }

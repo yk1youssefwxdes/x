@@ -254,6 +254,20 @@
                       {{ form.WHATSAPP_SESSION_NOTIFICATIONS_ENABLED }}
                     </div>
                   </div>
+
+                  <div class="d-flex align-items-center justify-content-between p-3 bg-light rounded-3 border">
+                    <div class="pe-3">
+                      <label class="fw-semibold text-dark mb-1 cursor-pointer" for="{{ form.WHATSAPP_AUTO_GROUP_INVITE_ON_FIRST_PAYMENT.id_for_label }}">
+                        {{ form.WHATSAPP_AUTO_GROUP_INVITE_ON_FIRST_PAYMENT.label }}
+                      </label>
+                      <div class="text-muted small">
+                        Envoie automatiquement les liens d'invitation aux groupes WhatsApp des matières inscrites dès validation du 1er paiement.
+                      </div>
+                    </div>
+                    <div class="form-check form-switch fs-4 mb-0">
+                      {{ form.WHATSAPP_AUTO_GROUP_INVITE_ON_FIRST_PAYMENT }}
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>

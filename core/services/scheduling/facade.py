@@ -418,3 +418,66 @@ class SchedulingFacade:
             raise ValueError("Type d'entité invalide.")
             
         return CalendarExporter.generate_ics(list(sessions_qs), title)
+
+    @staticmethod
+    def get_unhandled_changes(date_start=None, date_end=None, session_id=None):
+        return AuditService.get_unhandled_changes(date_start=date_start, date_end=date_end, session_id=session_id)
+
+    @staticmethod
+    def get_unhandled_count(date_start=None, date_end=None) -> int:
+        return AuditService.get_unhandled_count(date_start=date_start, date_end=date_end)
+
+    @staticmethod
+    @transaction.atomic
+    def handle_changes(
+        history_ids: Optional[List[int]] = None,
+        handle_all: bool = False,
+        send_notifications: bool = True,
+        notify_teachers: bool = True,
+        notify_students: bool = True,
+        user: Optional[Any] = None
+    ) -> Dict[str, Any]:
+        """
+        Marks unhandled session change history records as handled, and optionally dispatches notifications.
+        Can process all unhandled changes (handle_all=True) or a specified list of history IDs.
+        """
+        from core.models import SessionChangeHistory
+        from .notifications import NotificationService
+
+        qs = SessionChangeHistory.objects.filter(is_handled=False).select_related(
+            'session', 'session__group', 'session__group__teacher', 'session__room', 'session__substitute_teacher'
+        ).prefetch_related('session__group__students')
+
+        if not handle_all:
+            if not history_ids:
+                return {'handled_count': 0, 'notifications_sent': 0, 'message': 'Aucune modification sélectionnée.'}
+            qs = qs.filter(id__in=history_ids)
+
+        records = list(qs)
+        count = len(records)
+        if count == 0:
+            return {'handled_count': 0, 'notifications_sent': 0, 'message': 'Aucune modification en attente à traiter.'}
+
+        notification_stats = {'total_notifications': 0, 'teachers_notified_count': 0, 'students_notified_count': 0}
+        if send_notifications:
+            notification_stats = NotificationService.dispatch_batch_change_notifications(
+                history_records=records,
+                notify_teachers=notify_teachers,
+                notify_students=notify_students
+            )
+
+        now = timezone.now()
+        ids_to_update = [r.id for r in records]
+        SessionChangeHistory.objects.filter(id__in=ids_to_update).update(
+            is_handled=True,
+            handled_at=now
+        )
+
+        return {
+            'handled_count': count,
+            'notifications_sent': notification_stats['total_notifications'],
+            'teachers_notified_count': notification_stats['teachers_notified_count'],
+            'students_notified_count': notification_stats['students_notified_count'],
+            'message': f"{count} modification(s) traitée(s) avec succès."
+        }
+

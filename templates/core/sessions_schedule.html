@@ -398,7 +398,12 @@
                             <i class="bi bi-clock"></i>
                             {{ session.start_time|time:"H:i" }} - {{ session.end_time|time:"H:i" }}
                           </span>
-                          <div class="d-flex gap-1">
+                          <div class="d-flex gap-1 align-items-center">
+                            {% if session.has_unhandled_change %}
+                              <span class="badge bg-warning rounded-pill px-1 text-dark session-unhandled-dot" id="unhandled-dot-{{ session.id }}" title="Modification enregistrée en attente de notification" style="font-size: 0.65rem;">
+                                <i class="bi bi-clock-history"></i> Non traité
+                              </span>
+                            {% endif %}
                             {% if session.has_conflict %}
                               <span class="badge bg-danger rounded-circle p-1" title="{{ session.conflict_message }}">
                                 <i class="bi bi-exclamation-triangle-fill text-white" style="font-size: 0.75rem;"></i>
@@ -677,6 +682,263 @@
 
 <script>
 
+// ── Unhandled Changes & Batch Notifications Manager ──────────────────────────
+let _unhandledChangesData = [];
+
+function updateUnhandledBadge(count) {
+  const badge = document.getElementById('unhandledCountBadge');
+  if (!badge) return;
+  badge.innerText = count;
+  if (count > 0) {
+    badge.style.display = 'inline-block';
+  } else {
+    badge.style.display = 'none';
+  }
+}
+
+function markSessionAsUnhandled(sessionId) {
+  const card = document.getElementById(`session-card-${sessionId}`);
+  if (!card) return;
+  const timeHeader = card.querySelector('.session-time .d-flex.gap-1') || card.querySelector('.session-time');
+  if (timeHeader && !card.querySelector(`#unhandled-dot-${sessionId}`)) {
+    const dot = document.createElement('span');
+    dot.id = `unhandled-dot-${sessionId}`;
+    dot.className = 'badge bg-warning rounded-pill px-1 text-dark session-unhandled-dot';
+    dot.title = 'Modification enregistrée en attente de notification';
+    dot.style.fontSize = '0.65rem';
+    dot.innerHTML = '<i class="bi bi-clock-history"></i> Non traité';
+    timeHeader.prepend(dot);
+  }
+}
+
+function openHandleChangesModal() {
+  const modal = getOrCreateModal('handleChangesModal');
+  if (modal) modal.show();
+
+  const tbody = document.getElementById('unhandledChangesTableBody');
+  const alertDiv = document.getElementById('handleChangesAlert');
+  if (alertDiv) alertDiv.classList.add('d-none');
+  
+  if (tbody) {
+    tbody.innerHTML = `
+      <tr>
+        <td colspan="6" class="text-center py-4 text-muted">
+          <div class="spinner-border spinner-border-sm text-primary me-2" role="status"></div>
+          Chargement des modifications...
+        </td>
+      </tr>
+    `;
+  }
+
+  fetch('/schedule/unhandled-changes-ajax/')
+    .then(r => r.json())
+    .then(data => {
+      if (data.success) {
+        _unhandledChangesData = data.changes || [];
+        renderUnhandledChangesUI(data);
+      } else {
+        if (tbody) tbody.innerHTML = `<tr><td colspan="6" class="text-center text-danger py-3">${data.error || 'Erreur lors du chargement.'}</td></tr>`;
+      }
+    })
+    .catch(err => {
+      if (tbody) tbody.innerHTML = `<tr><td colspan="6" class="text-center text-danger py-3">Erreur réseau : ${err.message}</td></tr>`;
+    });
+}
+
+function renderUnhandledChangesUI(data) {
+  const changes = data.changes || [];
+  const tbody = document.getElementById('unhandledChangesTableBody');
+  const container = document.getElementById('handleChangesTableContainer');
+  const emptyNotice = document.getElementById('noUnhandledChangesNotice');
+  const selectAll = document.getElementById('selectAllChangesCheckbox');
+
+  const totalCountEl = document.getElementById('modalUnhandledTotalCount');
+  const studentsCountEl = document.getElementById('modalUnhandledStudentsCount');
+  const teachersCountEl = document.getElementById('modalUnhandledTeachersCount');
+
+  if (totalCountEl) totalCountEl.innerText = data.count || 0;
+  if (studentsCountEl) studentsCountEl.innerText = (data.summary && data.summary.students_affected) ? data.summary.students_affected : 0;
+  if (teachersCountEl) teachersCountEl.innerText = (data.summary && data.summary.teachers_affected) ? data.summary.teachers_affected : 0;
+
+  updateUnhandledBadge(data.count || 0);
+
+  if (changes.length === 0) {
+    if (container) container.classList.add('d-none');
+    if (emptyNotice) emptyNotice.classList.remove('d-none');
+    const btnSendAll = document.getElementById('btnSendAll');
+    const btnSendSelected = document.getElementById('btnSendSelected');
+    const btnSilent = document.getElementById('btnSilentHandle');
+    if (btnSendAll) btnSendAll.disabled = true;
+    if (btnSendSelected) btnSendSelected.disabled = true;
+    if (btnSilent) btnSilent.disabled = true;
+    if (tbody) tbody.innerHTML = '';
+    return;
+  }
+
+  if (container) container.classList.remove('d-none');
+  if (emptyNotice) emptyNotice.classList.add('d-none');
+  const btnSendAll = document.getElementById('btnSendAll');
+  const btnSilent = document.getElementById('btnSilentHandle');
+  if (btnSendAll) btnSendAll.disabled = false;
+  if (btnSilent) btnSilent.disabled = false;
+  if (selectAll) selectAll.checked = false;
+
+  let html = '';
+  changes.forEach(c => {
+    const diffsHtml = (c.diffs || []).map(d => `<span class="badge bg-light text-dark border me-1 mb-1 fw-normal">${d}</span>`).join(' ');
+    html += `
+      <tr id="unhandled-row-${c.id}">
+        <td class="text-center">
+          <input type="checkbox" class="form-check-input unhandled-change-checkbox" value="${c.id}" onchange="onIndividualChangeCheckboxChange()">
+        </td>
+        <td>
+          <div class="fw-bold text-primary">${c.group_name}</div>
+          <small class="text-muted">${c.subject || ''}</small>
+        </td>
+        <td>
+          <div><i class="bi bi-calendar-event text-secondary me-1"></i>${c.date}</div>
+          <small class="text-muted"><i class="bi bi-clock text-secondary me-1"></i>${c.time}</small>
+        </td>
+        <td>
+          <div><i class="bi bi-door-open text-secondary me-1"></i>${c.room_name}</div>
+          <small class="text-muted"><i class="bi bi-person text-secondary me-1"></i>${c.teacher_name}</small>
+        </td>
+        <td>
+          <div class="d-flex flex-wrap">${diffsHtml || '<span class="text-muted small">Aucun détail</span>'}</div>
+          ${c.change_reason ? `<div class="small text-muted fst-italic mt-1"><i class="bi bi-chat-left-text me-1"></i>${c.change_reason}</div>` : ''}
+        </td>
+        <td>
+          <div class="small fw-semibold text-dark">${c.user}</div>
+          <div class="small text-muted" style="font-size: 0.75rem;">${c.timestamp}</div>
+        </td>
+      </tr>
+    `;
+  });
+
+  if (tbody) tbody.innerHTML = html;
+  updateSelectionCount();
+}
+
+function toggleSelectAllChanges(masterCheckbox) {
+  const checkboxes = document.querySelectorAll('.unhandled-change-checkbox');
+  checkboxes.forEach(cb => {
+    cb.checked = masterCheckbox.checked;
+  });
+  updateSelectionCount();
+}
+
+function onIndividualChangeCheckboxChange() {
+  const checkboxes = document.querySelectorAll('.unhandled-change-checkbox');
+  const allChecked = Array.from(checkboxes).length > 0 && Array.from(checkboxes).every(cb => cb.checked);
+  const selectAll = document.getElementById('selectAllChangesCheckbox');
+  if (selectAll) selectAll.checked = allChecked;
+  updateSelectionCount();
+}
+
+function updateSelectionCount() {
+  const checked = document.querySelectorAll('.unhandled-change-checkbox:checked');
+  const count = checked.length;
+  const countSpan = document.getElementById('selectedChangesCount');
+  if (countSpan) countSpan.innerText = count;
+  const btnSelected = document.getElementById('btnSendSelected');
+  if (btnSelected) btnSelected.disabled = (count === 0);
+}
+
+function executeHandleChanges(action) {
+  const alertDiv = document.getElementById('handleChangesAlert');
+  if (alertDiv) alertDiv.classList.add('d-none');
+
+  const notifyTeachers = document.getElementById('notifyTeachersSwitch') ? document.getElementById('notifyTeachersSwitch').checked : true;
+  const notifyStudents = document.getElementById('notifyStudentsSwitch') ? document.getElementById('notifyStudentsSwitch').checked : true;
+
+  const checkedBoxes = document.querySelectorAll('.unhandled-change-checkbox:checked');
+  const selectedIds = Array.from(checkedBoxes).map(cb => cb.value);
+
+  if (action === 'send_selected' && selectedIds.length === 0) {
+    if (alertDiv) {
+      alertDiv.innerText = 'Veuillez cocher au moins une modification dans la liste.';
+      alertDiv.classList.remove('d-none');
+    }
+    return;
+  }
+
+  const btnSendAll = document.getElementById('btnSendAll');
+  const btnSendSelected = document.getElementById('btnSendSelected');
+  const btnSilent = document.getElementById('btnSilentHandle');
+
+  if (btnSendAll) btnSendAll.disabled = true;
+  if (btnSendSelected) btnSendSelected.disabled = true;
+  if (btnSilent) btnSilent.disabled = true;
+
+  const originalSendAllText = btnSendAll ? btnSendAll.innerHTML : '';
+  if (btnSendAll) btnSendAll.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Traitement...';
+
+  const params = new URLSearchParams();
+  params.append('action', action);
+  params.append('notify_teachers', notifyTeachers ? '1' : '0');
+  params.append('notify_students', notifyStudents ? '1' : '0');
+  if (selectedIds.length > 0) {
+    params.append('history_ids', selectedIds.join(','));
+  }
+
+  const csrfToken = getCookie('csrftoken');
+  fetch('/schedule/handle-changes-ajax/', {
+    method: 'POST',
+    headers: {
+      'X-CSRFToken': csrfToken,
+      'Content-Type': 'application/x-www-form-urlencoded',
+    },
+    body: params.toString()
+  })
+  .then(r => r.json())
+  .then(data => {
+    if (btnSendAll) {
+      btnSendAll.innerHTML = originalSendAllText;
+      btnSendAll.disabled = false;
+    }
+    if (btnSilent) btnSilent.disabled = false;
+
+    if (data.success) {
+      updateUnhandledBadge(data.unhandled_count || 0);
+
+      // Remove unhandled dots from session cards
+      if (action === 'send_all' || (action === 'mark_handled_silent' && selectedIds.length === 0)) {
+        document.querySelectorAll('.session-unhandled-dot').forEach(el => el.remove());
+      } else {
+        selectedIds.forEach(id => {
+          const row = document.getElementById(`unhandled-row-${id}`);
+          if (row) row.remove();
+        });
+      }
+
+      showToast('Succès', `${data.handled_count} modification(s) traitée(s). (${data.notifications_sent || 0} notifications envoyées)`, 'success');
+      
+      const modal = getOrCreateModal('handleChangesModal');
+      if (modal) modal.hide();
+
+      if (data.unhandled_count === 0) {
+        document.querySelectorAll('.session-unhandled-dot').forEach(el => el.remove());
+      }
+    } else {
+      if (alertDiv) {
+        alertDiv.innerText = data.error || 'Erreur lors du traitement.';
+        alertDiv.classList.remove('d-none');
+      }
+    }
+  })
+  .catch(err => {
+    if (btnSendAll) {
+      btnSendAll.innerHTML = originalSendAllText;
+      btnSendAll.disabled = false;
+    }
+    if (btnSilent) btnSilent.disabled = false;
+    if (alertDiv) {
+      alertDiv.innerText = 'Erreur réseau : ' + err.message;
+      alertDiv.classList.remove('d-none');
+    }
+  });
+}
+
 // URL templates for printing (replace the placeholder 0 with id)
 const PRINT_STUDENT_URL_TEMPLATE = "{% url 'core:print_student_schedule' 0 %}";
 const PRINT_TEACHER_URL_TEMPLATE = "{% url 'core:print_teacher_schedule' 0 %}";
@@ -781,8 +1043,8 @@ function showSessionDetail(sessionId, event) {
     .then(data => {
       let html = '';
 
-      if (data.is_future) {
-        // ── FUTURE session: editable form ──────────────────────────
+      if (data.is_future || data.is_editable || !data.is_past) {
+        // ── TODAY & FUTURE session: fully editable form ───────────
         let roomOptions = allRooms.map(r =>
           `<option value="${r.id}" ${r.id === data.room.id ? 'selected' : ''}>${r.name} (${r.capacity} places)</option>`
         ).join('');
@@ -849,9 +1111,14 @@ function showSessionDetail(sessionId, event) {
               <div id="modalConflictAlert" class="alert alert-danger d-none py-2 px-3 small my-3"></div>
 
               <div class="d-flex gap-2 justify-content-between mt-4">
-                <button type="submit" class="btn btn-primary btn-sm px-4">
-                  <i class="bi bi-save-fill"></i> Enregistrer
-                </button>
+                <div class="d-flex gap-2">
+                  <button type="submit" class="btn btn-primary btn-sm px-4">
+                    <i class="bi bi-save-fill"></i> Enregistrer
+                  </button>
+                  <a href="/sessions/${data.id}/attendance/" class="btn btn-outline-primary btn-sm px-3">
+                    <i class="bi bi-check2-circle"></i> Gérer présences
+                  </a>
+                </div>
                 <div class="d-flex gap-2">
                   ${data.is_exceptional ? `
                     <button type="button" class="btn btn-outline-warning btn-sm px-3" onclick="resetSessionToDefault(${data.id})">
@@ -1008,6 +1275,8 @@ function saveSessionModalChanges(e, sessionId) {
     (data) => {
       const detailModal = getOrCreateModal('sessionDetailModal');
       if (detailModal) detailModal.hide();
+      if (data.unhandled_count !== undefined) updateUnhandledBadge(data.unhandled_count);
+      markSessionAsUnhandled(sessionId);
       showToast('Succès', data.message, 'success');
       setTimeout(() => { location.reload(); }, 600);
     },
@@ -1033,6 +1302,9 @@ function updateSessionStatus(sessionId, newStatus) {
   .then(response => response.json())
   .then(data => {
     if (data.success) {
+      if (data.unhandled_count !== undefined) updateUnhandledBadge(data.unhandled_count);
+      markSessionAsUnhandled(sessionId);
+
       // 1. Update status badge in modal
       const badge = document.querySelector('.session-detail-content .badge');
       if (badge) {
@@ -1319,6 +1591,8 @@ function drop(ev) {
         card.querySelector('.session-info').innerHTML = `<i class="bi bi-door-open"></i> ${data.room_name}`;
       }
       card.classList.remove('session-conflict');
+      if (data.unhandled_count !== undefined) updateUnhandledBadge(data.unhandled_count);
+      markSessionAsUnhandled(sessionId);
       showToast('Succès', data.message, 'success');
       setTimeout(() => { location.reload(); }, 800);
     },
@@ -1399,6 +1673,7 @@ function saveNewSession(e) {
   .then(response => response.json())
   .then(data => {
     if (data.success) {
+      if (data.unhandled_count !== undefined) updateUnhandledBadge(data.unhandled_count);
       const modal = getOrCreateModal('sessionCreateModal');
       if (modal) modal.hide();
       showToast('Succès', data.message, 'success');
@@ -1576,6 +1851,27 @@ function resetSessionToDefault(sessionId) {
 function closeToast() {
   $('#appToast').fadeOut(200);
 }
+
+// Keyboard shortcuts for week navigation
+document.addEventListener('keydown', function(e) {
+  const activeEl = document.activeElement;
+  if (activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA' || activeEl.tagName === 'SELECT' || activeEl.isContentEditable)) {
+    return;
+  }
+  if (e.altKey && e.key === 'ArrowLeft') {
+    const prevLink = document.querySelector('a[href*="week={{ prev_week|date:"Y-m-d" }}"]');
+    if (prevLink) {
+      e.preventDefault();
+      window.location.href = prevLink.href;
+    }
+  } else if (e.altKey && e.key === 'ArrowRight') {
+    const nextLink = document.querySelector('a[href*="week={{ next_week|date:"Y-m-d" }}"]');
+    if (nextLink) {
+      e.preventDefault();
+      window.location.href = nextLink.href;
+    }
+  }
+});
 </script>
 
 <style>
@@ -1851,6 +2147,16 @@ html, body {
   background-color: var(--primary-light) !important;
   color: var(--primary-dark) !important;
   transform: translateX(2px);
+}
+
+.session-unhandled-dot {
+  animation: unhandled-pulse 2.5s infinite ease-in-out;
+  box-shadow: 0 0 0 1px rgba(245, 158, 11, 0.3);
+}
+
+@keyframes unhandled-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.85; transform: scale(0.98); }
 }
 
 @media print {

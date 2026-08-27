@@ -109,9 +109,13 @@ if settings.WHATSAPP_SESSION_NOTIFICATIONS_ENABLED:
     def session_post_save_notify(sender, instance, created, **kwargs):
         """
         After a Session is saved, diff against snapshot and send WA notifications
-        for cancellations or meaningful schedule changes (date, time, room).
+        for cancellations or meaningful schedule changes ONLY if _auto_notify is explicitly set to True.
+        Otherwise, changes are saved as unhandled in SessionChangeHistory for batch handling.
         """
         if created:
+            return
+
+        if not getattr(instance, '_auto_notify', False):
             return
 
         snapshot = getattr(instance, _SNAPSHOT_ATTR, None)
@@ -191,3 +195,18 @@ if settings.WHATSAPP_SESSION_NOTIFICATIONS_ENABLED:
                 )
         except Exception:
             pass
+
+
+@receiver(post_save, sender='core.Payment')
+def payment_post_save_send_group_invites(sender, instance, created, **kwargs):
+    """
+    When a payment is created with status='PAID', check if the student has
+    enrolled groups whose WhatsApp invite link has not been sent yet, and auto-send them.
+    """
+    if instance.status == 'PAID' and instance.student:
+        try:
+            from .utils import send_whatsapp_group_invites
+            send_whatsapp_group_invites(instance.student)
+        except Exception:
+            pass
+

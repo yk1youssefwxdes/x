@@ -20,6 +20,7 @@ from decimal import Decimal as D
 from collections import defaultdict
 from .filters import StudentFilter, CourseGroupFilter, TeacherFilter, RoomFilter, SessionFilter
 from django.contrib import messages
+from django.contrib.auth.decorators import login_required
 from django.urls import reverse
 from django.views.decorators.http import require_POST
 from django.core.files.storage import default_storage
@@ -1059,6 +1060,12 @@ def sessions_schedule(request):
     annotated_sessions = _annotate_conflicts(base_sessions)
     if exceptions_only:
         annotated_sessions = [s for s in annotated_sessions if s.is_exceptional]
+
+    from core.services.scheduling.audit import AuditService
+    unhandled_changes_count = SchedulingFacade.get_unhandled_count()
+    unhandled_session_ids = AuditService.get_unhandled_session_ids()
+    for s in annotated_sessions:
+        s.has_unhandled_change = s.id in unhandled_session_ids
     
     # Build schedule grid based on view mode
     if view_mode == 'teacher':
@@ -1109,6 +1116,8 @@ def sessions_schedule(request):
         'exceptions_only': exceptions_only,
         'courses': CourseGroup.objects.filter(is_active=True).order_by('name'),
         'is_week_locked': any(SchedulingFacade.is_locked(d) for d in dates),
+        'unhandled_changes_count': unhandled_changes_count,
+        'unhandled_session_ids': list(unhandled_session_ids),
     }
 
     return render(request, 'core/sessions_schedule.html', context)
@@ -1491,22 +1500,40 @@ def print_teachers_list(request):
 @require_POST
 def session_quick_status_update(request, session_id):
     """
-    Quick update session status via AJAX
-    Used for marking sessions as done/cancelled from schedule view
+    Quick update session status via AJAX.
+    Used for marking sessions as done/cancelled from schedule view.
+    Logs unhandled change to SessionChangeHistory.
     """
     session = get_object_or_404(Session, id=session_id)
     new_status = request.POST.get('status')
     
     if new_status not in ['PLANNED', 'DONE', 'CANCELLED']:
-        return JsonResponse({'success': False, 'error': 'Invalid status'}, status=400)
+        return JsonResponse({'success': False, 'error': 'Statut invalide.'}, status=400)
     
+    prev_status = session.status
     session.status = new_status
+    session.is_manually_edited = True
     session.save()
+
+    if prev_status != new_status:
+        from core.services.scheduling.audit import AuditService
+        AuditService.log_change(
+            session=session,
+            user=request.user if request.user.is_authenticated else None,
+            action='status_change',
+            previous_values={'status': prev_status},
+            new_values={'status': new_status},
+            change_reason=f"Changement de statut rapide: {session.get_status_display()}",
+            ip_address=request.META.get('REMOTE_ADDR'),
+            is_handled=False
+        )
     
+    from core.services.scheduling import SchedulingFacade
     return JsonResponse({
         'success': True,
         'session_id': session.id,
         'new_status': new_status,
+        'unhandled_count': SchedulingFacade.get_unhandled_count(),
         'message': f'Statut mis à jour: {session.get_status_display()}'
     })
 
@@ -1539,36 +1566,31 @@ def session_detail_ajax(request, session_id):
     attendance_dict = {a.student_id: a.is_present for a in attendance}
     
     student_list = []
-    for student in students:
+    for s in students:
         student_list.append({
-            'id': student.id,
-            'name': student.name,
-            'is_present': attendance_dict.get(student.id),
+            'id': s.id,
+            'name': s.name,
+            'matricule': s.matricule,
+            'phone': s.phone,
+            'parent_contact': s.parent_contact,
+            'is_present': attendance_dict.get(s.id, None),
         })
-        
-    current_time = timezone.localtime(timezone.now()) if settings.USE_TZ else datetime.now()
     
-    if settings.USE_TZ:
-        import zoneinfo
-        local_tz = timezone.get_current_timezone()
-        session_start = datetime.combine(session.date, session.start_time).replace(tzinfo=local_tz)
-        session_end = datetime.combine(session.date, session.end_time).replace(tzinfo=local_tz)
-    else:
-        session_start = datetime.combine(session.date, session.start_time)
-        session_end = datetime.combine(session.date, session.end_time)
+    today = timezone.now().date()
+    is_today = session.date == today
+    is_past = session.date < today
+    is_future = session.date >= today  # Today and future sessions can be modified
 
-    # editable if before session ends
-    is_past = current_time >= session_end
-    is_future = current_time < session_end
-    
+    substitute_teacher_id = session.substitute_teacher_id if session.substitute_teacher_id else None
+
     data = {
         'id': session.id,
         'group': {
-            'id': session.group.id,
-            'name': session.group.name,
-            'subject': session.group.subject,
-            'level': session.group.level.name if session.group.level else '',
-            'level_id': session.group.level.id if session.group.level else None,
+            'id': session.group.id if session.group else None,
+            'name': session.group.name if session.group else '',
+            'subject': session.group.subject if session.group else '',
+            'level': session.group.level.name if session.group and session.group.level else '',
+            'level_id': session.group.level.id if session.group and session.group.level else None,
         },
         'date': session.date.strftime('%Y-%m-%d'),
         'start_time': session.start_time.strftime('%H:%M'),
@@ -1583,19 +1605,21 @@ def session_detail_ajax(request, session_id):
             'id': session.group.teacher.id,
             'name': session.group.teacher.name,
             'phone': session.group.teacher.phone,
-        },
+        } if session.group and session.group.teacher else None,
         'substitute_teacher': {
             'id': session.substitute_teacher.id,
             'name': session.substitute_teacher.name,
         } if session.substitute_teacher else None,
-        'substitute_teacher_id': session.substitute_teacher_id,
+        'substitute_teacher_id': substitute_teacher_id,
         'status': session.status,
         'status_display': session.get_status_display(),
         'students': student_list,
         'student_count': len(student_list),
         'notes': session.notes,
         'is_past': is_past,
+        'is_today': is_today,
         'is_future': is_future,
+        'is_editable': not is_past,
         'is_exceptional': session.is_exceptional,
         'exception_type': session.get_exception_type(),
         'default_schedule': {
@@ -1609,7 +1633,6 @@ def session_detail_ajax(request, session_id):
     return JsonResponse(data)
 
 
-@require_POST
 @require_POST
 def session_create_ajax(request):
     """
@@ -1670,10 +1693,10 @@ def session_create_ajax(request):
         session.full_clean()
         session.save()
         
-        # Audit log creation
+        # Audit log creation as unhandled change
         AuditService.log_change(
             session=session,
-            user=request.user,
+            user=request.user if request.user.is_authenticated else None,
             action='create',
             previous_values={},
             new_values={
@@ -1684,7 +1707,8 @@ def session_create_ajax(request):
                 'status': session.status
             },
             change_reason="Création manuelle via planning",
-            ip_address=request.META.get('REMOTE_ADDR')
+            ip_address=request.META.get('REMOTE_ADDR'),
+            is_handled=False
         )
         
     except ValidationError as ve:
@@ -1693,9 +1717,11 @@ def session_create_ajax(request):
     except Exception as e:
         return JsonResponse({'success': False, 'error': str(e)}, status=500)
         
+    from core.services.scheduling import SchedulingFacade
     return JsonResponse({
         'success': True,
         'session_id': session.id,
+        'unhandled_count': SchedulingFacade.get_unhandled_count(),
         'message': 'Session créée avec succès.'
     })
 
@@ -1705,11 +1731,13 @@ def session_create_ajax(request):
 def session_update_ajax(request, session_id):
     """
     AJAX POST endpoint to update session date, room, times, notes, or substitute teacher.
+    Auto-saves immediately to DB, recording changes as unhandled for batch action handling.
     """
     from datetime import datetime as dt
     from django.core.exceptions import ValidationError
     from core.services.scheduling.locking import LockingService
     from core.services.scheduling.audit import AuditService
+    from core.services.scheduling import SchedulingFacade
     
     session = get_object_or_404(Session, id=session_id)
     
@@ -1756,7 +1784,7 @@ def session_update_ajax(request, session_id):
         else:
             try:
                 teacher_id_int = int(teacher_id)
-                if session.group.teacher_id == teacher_id_int:
+                if session.group and session.group.teacher_id == teacher_id_int:
                     session.substitute_teacher = None
                 else:
                     session.substitute_teacher_id = teacher_id_int
@@ -1801,7 +1829,7 @@ def session_update_ajax(request, session_id):
             else:
                 try:
                     teacher_id_int = int(teacher_id)
-                    if session.group.teacher_id == teacher_id_int:
+                    if session.group and session.group.teacher_id == teacher_id_int:
                         updates['substitute_teacher'] = None
                     else:
                         updates['substitute_teacher_id'] = teacher_id_int
@@ -1811,25 +1839,21 @@ def session_update_ajax(request, session_id):
             updates['notes'] = notes
             
         try:
-            from core.services.scheduling import SchedulingFacade
             propagated = SchedulingFacade.propagate_session_changes(
                 session=session,
                 scope=scope,
                 updates=updates,
-                user=request.user,
+                user=request.user if request.user.is_authenticated else None,
                 ip_address=request.META.get('REMOTE_ADDR'),
                 change_reason=change_reason
             )
             
-            # Send notifications
-            from core.services.scheduling.notifications import NotificationService
-            for s in propagated:
-                NotificationService.send_session_moved(s)
-                
             return JsonResponse({
                 'success': True,
-                'message': f"Modifications propagées avec succès sur {len(propagated)} séance(s).",
-                'propagated_count': len(propagated)
+                'message': f"Modifications auto-enregistrées sur {len(propagated)} séance(s).",
+                'propagated_count': len(propagated),
+                'unhandled_count': SchedulingFacade.get_unhandled_count(),
+                'room_name': session.room.name if session.room else ''
             })
         except ValidationError as ve:
             error_msg = "; ".join(ve.messages) if hasattr(ve, 'messages') else str(ve)
@@ -1842,7 +1866,7 @@ def session_update_ajax(request, session_id):
         session.full_clean()
         session.save()
         
-        # Compare and log changes
+        # Compare and log changes as unhandled
         new_vals = {
             'date': str(session.date),
             'start_time': session.start_time.strftime('%H:%M'),
@@ -1861,43 +1885,276 @@ def session_update_ajax(request, session_id):
         if changed_prev or changed_new:
             AuditService.log_change(
                 session=session,
-                user=request.user,
+                user=request.user if request.user.is_authenticated else None,
                 action='manual_override',
                 previous_values=changed_prev,
                 new_values=changed_new,
                 change_reason=change_reason,
-                ip_address=request.META.get('REMOTE_ADDR')
+                ip_address=request.META.get('REMOTE_ADDR'),
+                is_handled=False
             )
             
-            # Send notifications
-            from core.services.scheduling.notifications import NotificationService
-            if 'date' in changed_new or 'start_time' in changed_new or 'end_time' in changed_new:
-                NotificationService.send_session_moved(session)
-            elif 'room' in changed_new:
-                NotificationService.send_room_changed(session)
-            elif 'substitute_teacher' in changed_new:
-                NotificationService.send_teacher_substituted(session)
-            
-        return JsonResponse({'success': True, 'message': 'Séance mise à jour avec succès.'})
+        return JsonResponse({
+            'success': True,
+            'message': 'Séance enregistrée (en attente de traitement).',
+            'session_id': session.id,
+            'date': session.date.strftime('%Y-%m-%d'),
+            'start_time': session.start_time.strftime('%H:%M'),
+            'end_time': session.end_time.strftime('%H:%M'),
+            'room_id': session.room_id,
+            'room_name': session.room.name if session.room else '',
+            'substitute_teacher_id': session.substitute_teacher_id,
+            'unhandled_count': SchedulingFacade.get_unhandled_count(),
+        })
             
     except ValidationError as ve:
         error_msg = "; ".join(ve.messages) if hasattr(ve, 'messages') else str(ve)
         return JsonResponse({'success': False, 'error': error_msg}, status=400)
     except Exception as e:
         return JsonResponse({'success': False, 'error': str(e)}, status=500)
-        
+
+
+@login_required
+def whatsapp_schedule_notifications(request):
+    """
+    Dedicated page for managing and dispatching WhatsApp notifications
+    for scheduling changes. Displays pending unhandled changes, summary stats,
+    recent handled history, and exposes batch/individual send actions.
+    """
+    from core.services.scheduling.audit import AuditService
+    from core.services.scheduling.notifications import NotificationService
+    from core.models import SessionChangeHistory
+    from django.utils import timezone as tz
+    from core.utils import WhatsAppServiceAPI
+
+    # WhatsApp status check
+    try:
+        status_data = WhatsAppServiceAPI.get_status()
+        wa_ready = not status_data.get('offline') and status_data.get('status') == 'READY'
+    except Exception:
+        wa_ready = False
+
+    # Unhandled changes stats
+    unhandled_qs = AuditService.get_unhandled_changes()
+    unhandled_count = unhandled_qs.count()
+
+    # Count distinct students and teachers affected
+    students_affected = 0
+    teachers_affected = set()
+    for h in unhandled_qs.select_related('session__group__teacher', 'session__substitute_teacher').prefetch_related('session__group__students'):
+        s = h.session
+        if s and s.group:
+            students_affected += s.group.students.filter(is_active=True).count()
+            if s.group.teacher_id:
+                teachers_affected.add(s.group.teacher_id)
+        if s and s.substitute_teacher_id:
+            teachers_affected.add(s.substitute_teacher_id)
+
+    # Handled today count
+    today = tz.localdate()
+    handled_today = SessionChangeHistory.objects.filter(
+        is_handled=True,
+        handled_at__date=today
+    ).count()
+
+    # Recent handled history (last 50)
+    recent_handled = SessionChangeHistory.objects.filter(
+        is_handled=True
+    ).select_related('session__group', 'session', 'user').order_by('-handled_at')[:50]
+
+    return render(request, 'core/whatsapp_schedule_notifications.html', {
+        'status_data': status_data,
+        'wa_ready': wa_ready,
+        'unhandled_count': unhandled_count,
+        'students_affected': students_affected,
+        'teachers_affected': len(teachers_affected),
+        'handled_today': handled_today,
+        'recent_handled': recent_handled,
+        'filter_date_start': request.GET.get('date_start', ''),
+        'filter_date_end': request.GET.get('date_end', ''),
+    })
+
+
+@login_required
+@require_GET
+def schedule_unhandled_changes_ajax(request):
+    """
+    AJAX GET endpoint returning all unhandled session changes with metadata, diffs, and recipients.
+    """
+    from core.services.scheduling import SchedulingFacade
+    from core.services.scheduling.notifications import NotificationService
+    from core.utils import WhatsAppUtils
+
+    date_start_str = request.GET.get('date_start')
+    date_end_str = request.GET.get('date_end')
+    session_id_str = request.GET.get('session_id')
+
+    date_start = None
+    date_end = None
+    if date_start_str and date_end_str:
+        try:
+            from datetime import datetime as dt
+            date_start = dt.strptime(date_start_str, '%Y-%m-%d').date()
+            date_end = dt.strptime(date_end_str, '%Y-%m-%d').date()
+        except ValueError:
+            pass
+
+    session_id = int(session_id_str) if session_id_str and session_id_str.isdigit() else None
+
+    unhandled_qs = SchedulingFacade.get_unhandled_changes(date_start=date_start, date_end=date_end, session_id=session_id)
+    
+    changes_data = []
+    total_students_affected = 0
+    total_teachers_affected = set()
+
+    for h in unhandled_qs:
+        s = h.session
+        diffs = NotificationService.format_history_diff(h)
+        group_name = s.group.name if s and s.group else "Séance sans groupe"
+        subject = s.group.subject if s and s.group else ""
+        teacher_name = s.substitute_teacher.name if s and s.substitute_teacher else (s.group.teacher.name if s and s.group and s.group.teacher else "Non assigné")
+        teacher_phone = s.substitute_teacher.phone if s and s.substitute_teacher and s.substitute_teacher.phone else (s.group.teacher.phone if s and s.group and s.group.teacher and s.group.teacher.phone else '')
+        room_name = s.room.name if s and s.room else "Non assignée"
+        date_display = s.date.strftime('%d/%m/%Y') if s and s.date else "—"
+        time_display = f"{s.start_time.strftime('%H:%M')} - {s.end_time.strftime('%H:%M')}" if s and s.start_time and s.end_time else "—"
+        students_count = s.group.students.filter(is_active=True).count() if s and s.group else 0
+
+        if s and s.group and s.group.teacher:
+            total_teachers_affected.add(s.group.teacher_id)
+        if s and s.substitute_teacher:
+            total_teachers_affected.add(s.substitute_teacher_id)
+        total_students_affected += students_count
+
+        diffs_text = "\n• ".join(diffs) if diffs else "Modification de planning"
+        reason_text = f"\n\n*Motif :* {h.change_reason}" if h.change_reason else ""
+
+        teacher_msg = f"📢 *Notification de cours — {group_name}*\n\nBonjour {teacher_name},\nVotre cours du {date_display} a été modifié :\n• {diffs_text}{reason_text}\n\nCordialement,\nLa Direction."
+        teacher_link = WhatsAppUtils.generate_chat_link(teacher_phone, teacher_msg) if teacher_phone else ""
+
+        recipients = []
+        if teacher_phone:
+            recipients.append({
+                'type': 'teacher',
+                'name': teacher_name,
+                'label': 'Professeur',
+                'phone': teacher_phone,
+                'message': teacher_msg,
+                'whatsapp_link': teacher_link,
+            })
+
+        if s and s.group:
+            for st in s.group.students.filter(is_active=True):
+                st_phone = st.parent_contact or st.parent_contact_2 or st.phone
+                if not st_phone:
+                    continue
+                p_name = st.parent_name or st.name
+                st_msg = f"📢 *Information Planning — {group_name}*\n\nBonjour {p_name},\nLa séance de votre cours du {date_display} pour {st.name} a été modifiée :\n• {diffs_text}{reason_text}\n\nMerci de prendre note de ce changement.\nLa Direction."
+                st_link = WhatsAppUtils.generate_chat_link(st_phone, st_msg)
+                recipients.append({
+                    'type': 'student',
+                    'student_id': st.id,
+                    'student_name': st.name,
+                    'name': p_name,
+                    'label': 'Parent / Élève',
+                    'phone': st_phone,
+                    'message': st_msg,
+                    'whatsapp_link': st_link,
+                })
+
+        changes_data.append({
+            'id': h.id,
+            'session_id': s.id if s else None,
+            'action': h.action,
+            'group_name': group_name,
+            'subject': subject,
+            'teacher_name': teacher_name,
+            'teacher_phone': teacher_phone,
+            'room_name': room_name,
+            'date': date_display,
+            'time': time_display,
+            'diffs': diffs,
+            'change_reason': h.change_reason or '',
+            'user': h.user.username if h.user else 'Système',
+            'timestamp': h.timestamp.strftime('%d/%m/%Y %H:%M'),
+            'students_count': students_count,
+            'status': s.status if s else 'PLANNED',
+            'teacher_message': teacher_msg,
+            'teacher_whatsapp_link': teacher_link,
+            'recipients': recipients,
+            'recipients_count': len(recipients),
+        })
+
     return JsonResponse({
         'success': True,
-        'session_id': session.id,
-        'date': session.date.strftime('%Y-%m-%d'),
-        'start_time': session.start_time.strftime('%H:%M'),
-
-        'end_time': session.end_time.strftime('%H:%M'),
-        'room_id': session.room_id,
-        'room_name': session.room.name,
-        'substitute_teacher_id': session.substitute_teacher_id,
-        'message': 'Session mise à jour avec succès.'
+        'count': len(changes_data),
+        'changes': changes_data,
+        'summary': {
+            'total_changes': len(changes_data),
+            'students_affected': total_students_affected,
+            'teachers_affected': len(total_teachers_affected)
+        }
     })
+
+
+@login_required
+@require_POST
+def schedule_handle_changes_ajax(request):
+    """
+    AJAX POST endpoint to handle/resolve saved changes.
+    Supports:
+      - action = 'send_all' : process all unhandled changes and notify
+      - action = 'send_selected' : process specific history_ids and notify
+      - action = 'mark_handled_silent' : mark all or selected as handled without notifications
+    """
+    from core.services.scheduling import SchedulingFacade
+    from core.services.scheduling.audit import AuditService
+
+    action = request.POST.get('action', 'send_all')
+    raw_ids = request.POST.get('history_ids', '')
+    history_ids = []
+    if raw_ids:
+        try:
+            history_ids = [int(i.strip()) for i in raw_ids.split(',') if i.strip().isdigit()]
+        except Exception:
+            pass
+
+    notify_teachers = request.POST.get('notify_teachers', '1') in ['1', 'true', 'True', 'on']
+    notify_students = request.POST.get('notify_students', '1') in ['1', 'true', 'True', 'on']
+
+    if action == 'send_all':
+        result = SchedulingFacade.handle_changes(
+            handle_all=True,
+            send_notifications=True,
+            notify_teachers=notify_teachers,
+            notify_students=notify_students,
+            user=request.user
+        )
+    elif action == 'send_selected':
+        if not history_ids:
+            return JsonResponse({'success': False, 'error': 'Veuillez sélectionner au moins une modification.'}, status=400)
+        result = SchedulingFacade.handle_changes(
+            history_ids=history_ids,
+            handle_all=False,
+            send_notifications=True,
+            notify_teachers=notify_teachers,
+            notify_students=notify_students,
+            user=request.user
+        )
+    elif action == 'mark_handled_silent':
+        handle_all = not bool(history_ids)
+        result = SchedulingFacade.handle_changes(
+            history_ids=history_ids if not handle_all else None,
+            handle_all=handle_all,
+            send_notifications=False,
+            user=request.user
+        )
+    else:
+        return JsonResponse({'success': False, 'error': f"Action inconnue '{action}'."}, status=400)
+
+    result['success'] = True
+    result['unhandled_count'] = AuditService.get_unhandled_count()
+    return JsonResponse(result)
+
 
 
 @require_http_methods(['GET', 'POST'])
@@ -2203,15 +2460,24 @@ def whatsapp_absence_notifications(request):
         'course_group__schedules__room'
     )
 
-    # Build notification contacts
+    # Build notification contacts (deduplicated per student and course)
     absence_contacts = []
+    seen_student_courses = set()
 
     for absence in absences:
         student = absence.student
         course = absence.course_group
 
-        phones = [p for p in [student.parent_contact, student.parent_contact_2] if p]
-        if not phones:
+        if not student or not course:
+            continue
+
+        dedup_key = (student.id, course.id)
+        if dedup_key in seen_student_courses:
+            continue
+        seen_student_courses.add(dedup_key)
+
+        primary_phone = student.parent_contact or student.parent_contact_2 or student.phone
+        if not primary_phone:
             continue
 
         # Find the schedule slot that matches the absence date's weekday
@@ -2256,25 +2522,25 @@ def whatsapp_absence_notifications(request):
             'date': date_str,
         }))
 
-        for idx, phone in enumerate(phones):
-            whatsapp_link = WhatsAppUtils.generate_chat_link(phone, message)
-            contact = {
-                'phone': phone,
-                'phone_label': f'Parent {idx + 1}' if len(phones) > 1 else 'Parent',
-                'name': parent_name,
-                'student_name': student.name,
-                'course_name': course.name,
-                'date': date_str,
-                'time': time_str,
-                'room': room_str,
-                'teacher': course.teacher.name if course.teacher else '',
-                'schedule': matching_schedule,
-                'whatsapp_link': whatsapp_link,
-                'message': message,
-                'student': student,
-                'absence': absence,
-            }
-            absence_contacts.append(contact)
+        whatsapp_link = WhatsAppUtils.generate_chat_link(primary_phone, message)
+        contact = {
+            'phone': primary_phone,
+            'phone_label': 'Parent',
+            'secondary_phone': student.parent_contact_2 if student.parent_contact_2 and student.parent_contact_2 != primary_phone else None,
+            'name': parent_name,
+            'student_name': student.name,
+            'course_name': course.name,
+            'date': date_str,
+            'time': time_str,
+            'room': room_str,
+            'teacher': course.teacher.name if course.teacher else '',
+            'schedule': matching_schedule,
+            'whatsapp_link': whatsapp_link,
+            'message': message,
+            'student': student,
+            'absence': absence,
+        }
+        absence_contacts.append(contact)
 
     status_data = WhatsAppServiceAPI.get_status()
 
@@ -2421,6 +2687,11 @@ def whatsapp_payment_confirmation(request, payment_id):
     
     status_data = WhatsAppServiceAPI.get_status()
     
+    enrolled_groups_with_links = [
+        e.course_group for e in student.enrollment_set.filter(is_active=True).select_related('course_group')
+        if e.course_group and e.course_group.whatsapp_group_link and e.course_group.whatsapp_group_link.strip()
+    ]
+    
     context = {
         'payment': payment,
         'student': student,
@@ -2428,6 +2699,7 @@ def whatsapp_payment_confirmation(request, payment_id):
         'whatsapp_link_2': whatsapp_link_2,
         'message': message,
         'status_data': status_data,
+        'enrolled_groups_with_links': enrolled_groups_with_links,
     }
     
     return render(request, 'core/whatsapp_payment_confirmation.html', context)
@@ -2524,6 +2796,7 @@ def whatsapp_generate_link_ajax(request):
 @require_GET
 def whatsapp_dashboard(request):
     """WhatsApp integration dashboard with connection status and session control"""
+    from core.services.scheduling.audit import AuditService
     status_data = WhatsAppServiceAPI.get_status()
     
     # If request is AJAX or has ajax=1 query param, return status data as JSON
@@ -2531,10 +2804,12 @@ def whatsapp_dashboard(request):
         return JsonResponse(status_data)
         
     recent_logs = WhatsAppSendLog.objects.select_related('student').all()[:20]
+    unhandled_changes_count = AuditService.get_unhandled_count()
     
     context = {
         'status_data': status_data,
         'recent_logs': recent_logs,
+        'unhandled_changes_count': unhandled_changes_count,
     }
     return render(request, 'core/whatsapp_dashboard.html', context)
 
@@ -2684,6 +2959,13 @@ def whatsapp_send_ajax(request):
     )
 
     if res.get('success'):
+        history_id = request.POST.get('history_id')
+        if history_id and history_id.isdigit():
+            from core.models import SessionChangeHistory
+            SessionChangeHistory.objects.filter(id=int(history_id)).update(
+                is_handled=True,
+                handled_at=timezone.now()
+            )
         return JsonResponse({'success': True, 'message_id': res.get('messageId')})
     else:
         return JsonResponse({'success': False, 'error': res.get('error', 'Unknown error occurred.')}, status=400)
@@ -5353,6 +5635,7 @@ def system_settings_view(request):
         'SCHOOL_NAME', 'SCHOOL_SUBTITLE', 'SCHOOL_ADDRESS', 'SCHOOL_PHONE', 'SCHOOL_EMAIL',
         'CURRENCY_SYMBOL', 'RECEIPT_FOOTER_THANK_YOU', 'LATE_PAYMENT_GRACE_DAYS', 'ENABLE_PRORATION',
         'WHATSAPP_AUTO_ABSENCE_NOTIFICATIONS', 'WHATSAPP_SESSION_NOTIFICATIONS_ENABLED',
+        'WHATSAPP_AUTO_GROUP_INVITE_ON_FIRST_PAYMENT',
         'KIOSK_TIMEOUT', 'KIOSK_SEARCH_ENABLED',
         'DEFAULT_TEACHER_PAYMENT_METHOD',
     ]
@@ -5378,7 +5661,7 @@ def system_settings_view(request):
         initial_data = {}
         for key in keys:
             raw_val = get_setting(key)
-            if key in ['ENABLE_PRORATION', 'WHATSAPP_SESSION_NOTIFICATIONS_ENABLED', 'WHATSAPP_AUTO_ABSENCE_NOTIFICATIONS', 'KIOSK_SEARCH_ENABLED']:
+            if key in ['ENABLE_PRORATION', 'WHATSAPP_SESSION_NOTIFICATIONS_ENABLED', 'WHATSAPP_AUTO_ABSENCE_NOTIFICATIONS', 'WHATSAPP_AUTO_GROUP_INVITE_ON_FIRST_PAYMENT', 'KIOSK_SEARCH_ENABLED']:
                 initial_data[key] = str(raw_val).lower() == 'true'
             elif key in ['LATE_PAYMENT_GRACE_DAYS', 'KIOSK_TIMEOUT']:
                 try:

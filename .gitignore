@@ -67,3 +67,9 @@ Thumbs.db
 *.iml
 .mypy_cache/
 .ruff_cache/
+
+
+# .agents/
+.claude/
+.gemini/
+.github/
