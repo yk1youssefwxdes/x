@@ -3,6 +3,7 @@ import json
 import os
 import secrets
 import socket
+import shutil
 import subprocess
 import sys
 import threading
