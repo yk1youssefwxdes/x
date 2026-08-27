@@ -9,7 +9,10 @@
     "test:ui": "playwright test --ui",
     "test:debug": "playwright test --debug",
     "test:report": "playwright show-report",
-    "setup:db": "python utils/test_db_setup.py"
+    "setup:db": "python utils/test_db_setup.py",
+    "demo": "playwright test --config=demo/demo.config.ts",
+    "demo:headed": "playwright test --config=demo/demo.config.ts --headed",
+    "demo:fast": "DEMO_SPEED=0.5 playwright test --config=demo/demo.config.ts"
   },
   "keywords": ["playwright", "e2e", "testing", "django"],
   "author": "Antigravity QA",

@@ -5,8 +5,10 @@ package-lock.json
 # Playwright artifacts & reports
 test-results/
 playwright-report/
+playwright-report-demo/
 blob-report/
 playwright/.cache/
+demo/recordings/
 
 # Test output videos, traces, and screenshots
 *.webm
