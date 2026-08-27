@@ -20,7 +20,31 @@ function resolveChromePath() {
     if (process.env.CHROME_PATH && fs.existsSync(process.env.CHROME_PATH)) {
         return process.env.CHROME_PATH;
     }
-    // Try common binary names in order
+
+    // Windows standard locations
+    if (process.platform === 'win32') {
+        const progFiles = process.env.ProgramFiles || 'C:\\Program Files';
+        const progFilesX86 = process.env['ProgramFiles(x86)'] || 'C:\\Program Files (x86)';
+        const localAppData = process.env.LOCALAPPDATA || '';
+
+        const winCandidates = [
+            path.join(progFiles, 'Google', 'Chrome', 'Application', 'chrome.exe'),
+            path.join(progFilesX86, 'Google', 'Chrome', 'Application', 'chrome.exe'),
+            path.join(localAppData, 'Google', 'Chrome', 'Application', 'chrome.exe'),
+            path.join(progFilesX86, 'Microsoft', 'Edge', 'Application', 'msedge.exe'),
+            path.join(progFiles, 'Microsoft', 'Edge', 'Application', 'msedge.exe'),
+            path.join(progFiles, 'BraveSoftware', 'Brave-Browser', 'Application', 'brave.exe'),
+            path.join(localAppData, 'Chromium', 'Application', 'chrome.exe')
+        ];
+
+        for (const p of winCandidates) {
+            if (p && fs.existsSync(p)) {
+                return p;
+            }
+        }
+    }
+
+    // Try common Linux binary names in order
     const candidates = ['chromium', 'chromium-browser', 'google-chrome-stable', 'google-chrome'];
     for (const name of candidates) {
         try {
@@ -36,6 +60,7 @@ function resolveChromePath() {
     }
     return null;  // let Puppeteer use its bundled Chromium
 }
+
 
 const customChromePath = resolveChromePath();
 const logDir = process.env.WA_LOG_DIR ? path.resolve(process.env.WA_LOG_DIR) : null;

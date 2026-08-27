@@ -144,6 +144,19 @@ if (-not $PythonExe) {
     Write-Host "  [OK] Standalone Python runtime configured." -ForegroundColor Green
 }
 
+# 6. Check / Bootstrap Node.js for WhatsApp Service
+$BundledNode = Join-Path $InstallDir "runtime\node\node.exe"
+$SysNode = (Get-Command node -ErrorAction SilentlyContinue)
+if (-not (Test-Path $BundledNode) -and -not $SysNode) {
+    Write-Host "`n  Setting up standalone Node.js for WhatsApp automation..." -ForegroundColor Yellow
+    $NodeDir = Join-Path $InstallDir "runtime\node"
+    New-Item -ItemType Directory -Path $NodeDir -Force | Out-Null
+    $NodeUrl = "https://nodejs.org/dist/v20.18.0/win-x64/node.exe"
+    Invoke-WebRequest -Uri $NodeUrl -OutFile $BundledNode
+    Write-Host "  [OK] Standalone Node.js configured at $BundledNode" -ForegroundColor Green
+}
+
+
 # 6. Windows Autostart Prompt
 $EnableAutoStart = $true
 if ([string]::IsNullOrWhiteSpace($AutoStart)) {

@@ -116,7 +116,8 @@ def get_chromium_executable() -> str | None:
     Locate Chromium browser binary for Puppeteer / WhatsApp.
     1. Bundled private runtime: runtime/chromium/chrome.exe (Win) or runtime/chromium/chrome (Linux)
     2. CHROME_PATH environment variable if set and existing
-    3. None (Puppeteer internal fallback)
+    3. Standard Windows installation paths (Google Chrome, Microsoft Edge, Chromium)
+    4. PATH lookups (which / where)
     """
     runtime_dir = get_runtime_dir()
     if sys.platform == "win32":
@@ -131,7 +132,33 @@ def get_chromium_executable() -> str | None:
     if env_chrome and os.path.isfile(env_chrome):
         return env_chrome
 
+    if sys.platform == "win32":
+        # Check standard Windows paths (Chrome, Edge, Brave, Chromium)
+        prog_files = os.environ.get("ProgramFiles", r"C:\Program Files")
+        prog_files_x86 = os.environ.get("ProgramFiles(x86)", r"C:\Program Files (x86)")
+        local_appdata = os.environ.get("LOCALAPPDATA", "")
+
+        windows_candidates = [
+            os.path.join(prog_files, "Google", "Chrome", "Application", "chrome.exe"),
+            os.path.join(prog_files_x86, "Google", "Chrome", "Application", "chrome.exe"),
+            os.path.join(local_appdata, "Google", "Chrome", "Application", "chrome.exe"),
+            os.path.join(prog_files_x86, "Microsoft", "Edge", "Application", "msedge.exe"),
+            os.path.join(prog_files, "Microsoft", "Edge", "Application", "msedge.exe"),
+            os.path.join(prog_files, "BraveSoftware", "Brave-Browser", "Application", "brave.exe"),
+            os.path.join(local_appdata, "Chromium", "Application", "chrome.exe"),
+        ]
+        for candidate in windows_candidates:
+            if candidate and os.path.isfile(candidate):
+                return candidate
+    else:
+        # Linux PATH lookup
+        for name in ("chromium", "chromium-browser", "google-chrome-stable", "google-chrome"):
+            resolved = shutil.which(name)
+            if resolved and os.path.isfile(resolved):
+                return resolved
+
     return None
+
 
 
 # ---------------------------------------------------------------------------
