@@ -48,8 +48,13 @@ staticfiles/
 .coverage
 htmlcov/
 
-# Node.js
+# Node.js & Playwright
 node_modules/
+playwright_test/node_modules/
+playwright_test/test-results/
+playwright_test/playwright-report/
+playwright_test/blob-report/
+playwright_test/.cache/
 whatsapp_service/.wwebjs_cache/
 whatsapp_service/whatsapp_session/
 whatsapp_service/logs/
