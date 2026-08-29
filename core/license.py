@@ -20,7 +20,7 @@ _LICENSE_FILE_NAME: Final[str] = "license.enc"
 _LICENSE_EXTRA_SECRET_ENV: Final[str] = "LICENSE_EXTRA_SECRET"
 _LICENSE_FINGERPRINT_ENV: Final[str] = "LICENSE_FINGERPRINT"   # cloud override
 _WILDCARD_FINGERPRINT: Final[str] = "*"                        # matches any device
-_ERROR_MESSAGE: Final[str] = "This copy of the application is not licensed for this device."
+_ERROR_MESSAGE: Final[str] = "Cette copie du logiciel n'est pas autorisée sur cet appareil."
 
 
 def _is_cloud_environment() -> bool:
@@ -100,7 +100,7 @@ def _load_license_data() -> dict:
         return _auto_generate_cloud_license()
 
     # If no file decrypted successfully, die
-    _die("License file missing or invalid.")
+    _die("Fichier de licence manquant ou invalide. Veuillez contacter : 0715125245")
 
 
 def _die(message: str = _ERROR_MESSAGE) -> None:
@@ -123,7 +123,7 @@ def validate_or_exit() -> None:
 
     licensed_fingerprint = license_data.get("LICENSED_FINGERPRINT")
     if not isinstance(licensed_fingerprint, str):
-        _die("Invalid license fingerprint.")
+        _die("Empreinte de licence invalide.")
 
     # If the license was issued with the wildcard '*', skip fingerprint check.
     if licensed_fingerprint != _WILDCARD_FINGERPRINT:
@@ -146,20 +146,20 @@ def validate_or_exit() -> None:
     start_date_str = license_data.get("START_DATE")
     end_date_str = license_data.get("END_DATE")
     if not isinstance(start_date_str, str) or not isinstance(end_date_str, str):
-        _die("Invalid license dates.")
+        _die("Dates de licence invalides.")
 
     try:
         start_date = datetime.date.fromisoformat(start_date_str)
         end_date = datetime.date.fromisoformat(end_date_str)
     except Exception:
-        _die("Invalid license dates.")
+        _die("Dates de licence invalides.")
 
     today = datetime.date.today()
 
     if today < start_date:
-        _die("License not active yet.")
+        _die("La licence n'est pas encore active.")
 
     if today > end_date:
-        _die("License expired. Please contact: 0715125245")
+        _die("Votre période d'essai a expiré. Veuillez contacter : 0715125245")
 
     return True
