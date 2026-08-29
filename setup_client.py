@@ -361,8 +361,12 @@ def initialize_application(python_exe: str) -> bool:
         staticfiles_dir = PROJECT_ROOT / "staticfiles"
         if not staticfiles_dir.exists() or not any(staticfiles_dir.iterdir()):
             print("  Collecting static assets (manage.py collectstatic)...")
-            subprocess.run([python_exe, str(manage_py), "collectstatic", "--noinput"], cwd=str(PROJECT_ROOT))
-            log_ok("Static files collected.")
+            subprocess.run(
+                [python_exe, str(manage_py), "collectstatic", "--noinput"],
+                cwd=str(PROJECT_ROOT),
+                env=sub_env,
+            )
+            log_ok("Fichiers statiques collectés.")
 
     return True
 
