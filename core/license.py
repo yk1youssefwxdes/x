@@ -125,8 +125,8 @@ def validate_or_exit() -> None:
     if not isinstance(licensed_fingerprint, str):
         _die("Empreinte de licence invalide.")
 
-    # If the license was issued with the wildcard '*', skip fingerprint check.
-    if licensed_fingerprint != _WILDCARD_FINGERPRINT:
+    # If the license was issued with the wildcard '*', or AUTO_LICENSE is set, skip fingerprint check.
+    if licensed_fingerprint != _WILDCARD_FINGERPRINT and not os.getenv("AUTO_LICENSE", "").lower() in ("true", "1", "yes"):
         # Allow an environment variable to override hardware detection.
         # Use this on cloud/container platforms where hardware IDs are
         # ephemeral.  Set LICENSE_FINGERPRINT to the hash stored in the
