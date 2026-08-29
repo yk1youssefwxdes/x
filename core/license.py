@@ -160,6 +160,6 @@ def validate_or_exit() -> None:
         _die("License not active yet.")
 
     if today > end_date:
-        _die("Trial period expired. Please contact the vendor in 0661345595.")
+        _die("License expired. Please contact: 0715125245")
 
     return True
