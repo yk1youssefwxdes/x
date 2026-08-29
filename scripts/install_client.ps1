@@ -12,10 +12,13 @@ param(
     [string]$DirectZipUrl = "",
     [string]$InstallDir = "$env:LOCALAPPDATA\SchoolERP",
     [string]$LicenseUrl = "",
+    [switch]$Trial = $true,
+    [int]$TrialDays = 14,
     [switch]$LockToThisPC = $true,
     [string]$AutoStart = "",
     [switch]$LaunchAfter = $true
 )
+
 
 
 $ErrorActionPreference = "Stop"
@@ -173,7 +176,11 @@ Write-Host "`n[4/5] Executing setup_client.py..." -ForegroundColor Green
 Set-Location $InstallDir
 
 $SetupArgs = @((Join-Path $InstallDir "setup_client.py"))
-if ($LockToThisPC) {
+if ($Trial) {
+    $SetupArgs += "--trial"
+    $SetupArgs += "--trial-days"
+    $SetupArgs += "$TrialDays"
+} elseif ($LockToThisPC) {
     $SetupArgs += "--lock-here"
 }
 if ($EnableAutoStart) {
@@ -200,6 +207,8 @@ Write-Host "====================================================================
 Write-Host " INSTALLATION COMPLETED SUCCESSFULLY!" -ForegroundColor Green
 Write-Host " Application Path : $InstallDir" -ForegroundColor White
 Write-Host " Desktop Shortcut : Created on Desktop (School ERP.lnk)" -ForegroundColor White
+Write-Host " License Mode     : $(if ($Trial) { "$TrialDays-Day Free Trial (Hardware-locked)" } else { "Full Permanent License" })" -ForegroundColor White
 Write-Host " Auto-Start Boot  : $(if ($EnableAutoStart) { 'Enabled (starts on PC boot)' } else { 'Disabled' })" -ForegroundColor White
 Write-Host "======================================================================" -ForegroundColor Cyan
+
 

@@ -131,12 +131,28 @@ def activate_license_file(license_src: str) -> bool:
         return False
 
 
-def generate_locked_license_for_this_machine(start_date: str = "2025-01-01", end_date: str = "2035-12-31") -> bool:
+import datetime
+
+
+def generate_locked_license_for_this_machine(
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    trial_days: Optional[int] = None,
+) -> bool:
     """Generate and install an encrypted license.enc locked strictly to this PC's hardware fingerprint."""
     try:
         sys.path.insert(0, str(PROJECT_ROOT))
         from core.license_utils import encrypt_license_payload, get_license_secret
         from core.paths import get_licenses_dir, get_base_dir
+
+        today = datetime.date.today()
+        if start_date is None:
+            start_date = today.isoformat()
+
+        if trial_days is not None:
+            end_date = (today + datetime.timedelta(days=trial_days)).isoformat()
+        elif end_date is None:
+            end_date = (today + datetime.timedelta(days=3650)).isoformat()
 
         fp = get_hardware_fingerprint()
         payload = {
@@ -146,21 +162,23 @@ def generate_locked_license_for_this_machine(start_date: str = "2025-01-01", end
         }
         secret_key = get_license_secret()
         encrypted = encrypt_license_payload(payload, secret_key, "license.enc")
-        
+
         # Write to customer data licenses directory and base dir
         dest_data = get_licenses_dir() / "license.enc"
         dest_base = get_base_dir() / "license.enc"
         dest_data.parent.mkdir(parents=True, exist_ok=True)
-        
+
         content = json.dumps(encrypted, indent=2)
         dest_data.write_text(content, encoding="utf-8")
         dest_base.write_text(content, encoding="utf-8")
-        
-        log_ok(f"Hardware-locked license generated and activated for Fingerprint: {fp[:8]}...{fp[-6:]}")
+
+        duration_desc = f"{trial_days}-Day Trial" if trial_days else f"{start_date} -> {end_date}"
+        log_ok(f"Hardware-locked license activated ({duration_desc}) for Fingerprint: {fp[:8]}...{fp[-6:]}")
         return True
     except Exception as exc:
         log_error(f"Failed to generate locked license: {exc}")
         return False
+
 
 
 
@@ -501,8 +519,10 @@ def parse_arguments() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="School ERP Client PC Automated Setup")
     parser.add_argument("--license", help="Path to license.enc to install")
     parser.add_argument("--lock-here", action="store_true", help="Generate & activate a license locked strictly to THIS computer")
-    parser.add_argument("--start-date", default="2025-01-01", help="License start date (YYYY-MM-DD)")
-    parser.add_argument("--end-date", default="2035-12-31", help="License end date (YYYY-MM-DD)")
+    parser.add_argument("--trial", action="store_true", help="Activate 14-day free trial license locked to THIS computer")
+    parser.add_argument("--trial-days", type=int, default=14, help="Number of trial days (default 14)")
+    parser.add_argument("--start-date", default=None, help="License start date (YYYY-MM-DD)")
+    parser.add_argument("--end-date", default=None, help="License end date (YYYY-MM-DD)")
     parser.add_argument("--autostart", action="store_true", default=None, help="Start School ERP automatically on Windows boot")
     parser.add_argument("--no-autostart", dest="autostart", action="store_false", help="Disable Windows boot autostart")
     parser.add_argument("--non-interactive", action="store_true", help="Run without interactive prompts")
@@ -527,8 +547,10 @@ def main() -> int:
 
     # Step 2: License Check / Installation / On-Site Lock
     log_step(1, TOTAL_STEPS, "License Verification & Activation")
-    if args.lock_here:
-        generate_locked_license_for_this_machine(args.start_date, args.end_date)
+    if args.trial:
+        generate_locked_license_for_this_machine(trial_days=args.trial_days)
+    elif args.lock_here:
+        generate_locked_license_for_this_machine(start_date=args.start_date, end_date=args.end_date)
     elif args.license:
         activate_license_file(args.license)
 
@@ -541,19 +563,38 @@ def main() -> int:
             print("\n  License required to run this software on this PC.")
             print(f"  Hardware Fingerprint: {fp}")
             print("\n  Select License Option:")
-            print("    [1] Lock license strictly to THIS PC (Instant On-Site Activation)")
-            print("    [2] Install custom license.enc file")
-            print("    [3] Continue without activating license now")
-            
-            choice = input("\n  Enter choice [1/2/3] (default 1): ").strip()
+            print("    [1] 14-Day Free Trial (Hardware-locked to THIS PC) [Default]")
+            print("    [2] Full Permanent License (10 Years, locked to THIS PC)")
+            print("    [3] Custom Trial / Days")
+            print("    [4] Install custom license.enc file")
+            print("    [5] Continue without activating license now")
+
+            choice = input("\n  Enter choice [1/2/3/4/5] (default 1): ").strip()
             if choice in ("", "1"):
-                generate_locked_license_for_this_machine(args.start_date, args.end_date)
+                generate_locked_license_for_this_machine(trial_days=14)
                 valid, lic_msg = verify_license()
                 if valid:
-                    log_ok("License successfully generated and locked to this machine!")
+                    log_ok("14-Day Free Trial license activated successfully for this machine!")
                 else:
                     log_error(lic_msg)
             elif choice == "2":
+                generate_locked_license_for_this_machine(start_date=args.start_date, end_date=args.end_date)
+                valid, lic_msg = verify_license()
+                if valid:
+                    log_ok("Full license activated successfully for this machine!")
+                else:
+                    log_error(lic_msg)
+            elif choice == "3":
+                custom_days_str = input("  Enter number of trial days [e.g. 14, 30]: ").strip()
+                try:
+                    custom_days = int(custom_days_str) if custom_days_str else 14
+                except ValueError:
+                    custom_days = 14
+                generate_locked_license_for_this_machine(trial_days=custom_days)
+                valid, lic_msg = verify_license()
+                if valid:
+                    log_ok(f"{custom_days}-Day Trial license activated successfully!")
+            elif choice == "4":
                 user_lic_path = input("  Enter license.enc path (or drag & drop here): ").strip().strip('"').strip("'")
                 if user_lic_path:
                     if activate_license_file(user_lic_path):
@@ -564,6 +605,7 @@ def main() -> int:
                             log_error(lic_msg)
             else:
                 print("  [INFO] Continuing setup. Place license.enc before running.")
+
 
 
     # Step 3: Runtime Discovery & Python Dependencies
