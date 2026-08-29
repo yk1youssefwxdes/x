@@ -252,6 +252,10 @@ def setup_python_dependencies(python_exe: str) -> bool:
     print("  Installing required Python packages via pip...")
     cmd = [python_exe, "-m", "pip", "install", "--no-warn-script-location", "-r", str(req_file)]
     res = subprocess.run(cmd)
+    if res.returncode != 0:
+        # Fallback: system-managed Python environments (Debian/Ubuntu) need --break-system-packages
+        cmd_fallback = cmd + ["--break-system-packages"]
+        res = subprocess.run(cmd_fallback)
     return res.returncode == 0
 
 
@@ -333,15 +337,25 @@ def initialize_application(python_exe: str) -> bool:
     configure_environment(PROJECT_ROOT)
 
 
-    # Run migrations
+    # Run migrations — pass PROJECT_ROOT so subprocesses resolve the same license.enc path
     manage_py = PROJECT_ROOT / "manage.py"
     if manage_py.exists():
         print("  Applying database migrations (manage.py migrate)...")
-        res = subprocess.run([python_exe, str(manage_py), "migrate", "--noinput"], cwd=str(PROJECT_ROOT))
+        sub_env = os.environ.copy()
+        sub_env["SCHOOL_ERP_BASE_DIR"] = str(PROJECT_ROOT)
+        sub_env["DJANGO_SETTINGS_MODULE"] = "school_erp.settings"
+        # Allow migration subprocess to bypass hardware fingerprint check —
+        # setup_client.py already verified/generated the license above.
+        sub_env["AUTO_LICENSE"] = "true"
+        res = subprocess.run(
+            [python_exe, str(manage_py), "migrate", "--noinput"],
+            cwd=str(PROJECT_ROOT),
+            env=sub_env,
+        )
         if res.returncode != 0:
-            log_error("Database migration failed.")
+            log_error("Échec de la migration de la base de données.")
             return False
-        log_ok("Database initialized successfully.")
+        log_ok("Base de données initialisée avec succès.")
 
         # Collect static files if staticfiles/ does not exist
         staticfiles_dir = PROJECT_ROOT / "staticfiles"
