@@ -302,31 +302,29 @@ def student_detail(request):
 
 
 def cockpit(request):
-    """Operational dashboard (cockpit) for director"""
+    """Simple, actionable daily dashboard for school staff"""
     from .utils import auto_generate_future_sessions
     auto_generate_future_sessions()
     
-    stats = get_dashboard_stats()
-
-    # Red list: unpaid students who have a session TODAY only
     today = timezone.now().date()
-    # Get IDs of students enrolled in a group that has a session today
-    students_with_session_today = set(
-        Session.objects.filter(
-            date=today,
-            status='PLANNED'
-        ).values_list('group__students__id', flat=True)
-    )
-
-    all_unpaid = stats.get('alerts', {}).get('unpaid_students', [])
-    red_list = [
-        u for u in all_unpaid
-        if u['student'].id in students_with_session_today
-    ]
+    today_sessions = Session.objects.filter(
+        date=today
+    ).select_related('group', 'group__teacher', 'room').order_by('start_time')
+    
+    today_total = today_sessions.count()
+    today_done = today_sessions.filter(status='DONE').count()
+    
+    stats = get_dashboard_stats()
+    
+    recent_payments = Payment.objects.select_related('student').order_by('-payment_date', '-created_at')[:5]
 
     context = {
         'stats': stats,
-        'red_list': red_list,
+        'today': today,
+        'today_sessions': today_sessions,
+        'today_total': today_total,
+        'today_done': today_done,
+        'recent_payments': recent_payments,
     }
 
     return render(request, 'core/dashboard.html', context)
@@ -786,80 +784,90 @@ def session_attendance(request, session_id):
 
 
 def teacher_payroll(request):
-    """Calculate payroll for a teacher over a date range."""
+    """Calculate payroll for a teacher for a selected month."""
     from .models import Teacher, Session, TeacherPayment
     from .utils import calculate_teacher_hours, get_months_in_range
     from django.db.models import Q
     from django.contrib import messages
-    
+    import calendar
+
     teacher_qs = Teacher.objects.filter(is_active=True)
 
+    # Build months list for the select (last 18 months)
+    from datetime import date
+    today = timezone.now().date()
+    months_list = []
+    for i in range(18):
+        y = today.year
+        m = today.month - i
+        while m <= 0:
+            m += 12
+            y -= 1
+        months_list.append({'value': f'{y}-{m:02d}', 'label': date(y, m, 1).strftime('%B %Y').capitalize()})
+
     result = None
+    selected_month = request.POST.get('month') or request.GET.get('month')
+    selected_teacher_id = request.POST.get('teacher_id') or request.GET.get('teacher_id')
+
     if request.method == 'POST':
-        action = request.POST.get('action')
+        action = request.POST.get('action', 'calculate')
         teacher_id = request.POST.get('teacher_id')
-        start = request.POST.get('start_date')
-        end = request.POST.get('end_date')
-        
-        if not (teacher_id and start and end):
-            return HttpResponseBadRequest('Missing parameters')
-            
+        month_str = request.POST.get('month')  # e.g. "2026-08"
+
+        if not (teacher_id and month_str):
+            messages.error(request, 'Veuillez sélectionner un professeur et un mois.')
+            return render(request, 'core/teacher_payroll.html', {
+                'teacher_qs': teacher_qs, 'result': None, 'months_list': months_list,
+                'selected_month': selected_month, 'selected_teacher_id': selected_teacher_id,
+            })
+
+        try:
+            year_m, mon_m = int(month_str[:4]), int(month_str[5:7])
+        except (ValueError, IndexError):
+            messages.error(request, 'Mois invalide.')
+            return redirect('core:teacher_payroll')
+
+        start_d = date(year_m, mon_m, 1)
+        end_d = date(year_m, mon_m, calendar.monthrange(year_m, mon_m)[1])
         teacher = get_object_or_404(Teacher, pk=teacher_id)
-        start_d = datetime.strptime(start, '%Y-%m-%d').date()
-        end_d = datetime.strptime(end, '%Y-%m-%d').date()
-        
+
         if action == 'save_payment':
             amount = request.POST.get('amount')
             pay_date_str = request.POST.get('payment_date')
-            method = request.POST.get('payment_method')
-            pay_type = request.POST.get('payment_type')
-            month = request.POST.get('period_month')
-            year = request.POST.get('period_year')
+            method = request.POST.get('payment_method', 'CASH')
+            pay_type = request.POST.get('payment_type', 'SALARY')
             notes = request.POST.get('notes', '')
-            
-            if amount and month and year:
-                pay_date = datetime.strptime(pay_date_str, '%Y-%m-%d').date() if pay_date_str else timezone.now().date()
+
+            if amount:
+                pay_date = datetime.strptime(pay_date_str, '%Y-%m-%d').date() if pay_date_str else today
                 TeacherPayment.objects.create(
                     teacher=teacher,
                     amount=Decimal(amount),
                     payment_date=pay_date,
                     payment_method=method,
                     payment_type=pay_type,
-                    period_month=int(month),
-                    period_year=int(year),
+                    period_month=mon_m,
+                    period_year=year_m,
                     notes=notes
                 )
                 messages.success(request, f"Paiement de {amount} DH enregistré pour {teacher.name}.")
             else:
-                messages.error(request, "Erreur lors de l'enregistrement : paramètres manquants.")
+                messages.error(request, "Montant manquant.")
 
-        # Get sessions list for reference
+        # Always compute result after any POST
         sessions = Session.objects.filter(
             Q(group__teacher=teacher, substitute_teacher__isnull=True) | Q(substitute_teacher=teacher),
             status='DONE',
             date__range=[start_d, end_d]
         ).order_by('date', 'start_time')
 
-        sessions_list = []
-        for s in sessions:
-            sessions_list.append({'session': s, 'hours': s.duration_hours()})
-
-        # Calculate earnings using our upgraded helper
+        sessions_list = [{'session': s, 'hours': s.duration_hours()} for s in sessions]
         payroll_data = calculate_teacher_hours(teacher, start_d, end_d)
-        
-        # Get target months in date range for payment log
-        target_months = get_months_in_range(start_d, end_d)
-        q_filter = Q()
-        for m in target_months:
-            q_filter |= Q(period_month=m.month, period_year=m.year)
-            
-        logged_payments = []
-        total_paid = Decimal('0.00')
-        if target_months:
-            logged_payments = TeacherPayment.objects.filter(
-                Q(teacher=teacher) & q_filter
-            ).order_by('payment_date', 'id')
-            total_paid = sum(p.amount for p in logged_payments)
+
+        logged_payments = TeacherPayment.objects.filter(
+            teacher=teacher, period_month=mon_m, period_year=year_m
+        ).order_by('payment_date')
+        total_paid = sum(p.amount for p in logged_payments)
 
         result = {
             'teacher': teacher,
@@ -867,10 +875,19 @@ def teacher_payroll(request):
             'logged_payments': logged_payments,
             'total_paid': total_paid,
             'balance': payroll_data['salary_taught'] - total_paid,
+            'month_str': month_str,
+            'start_d': start_d,
+            'end_d': end_d,
             **payroll_data
         }
 
-    return render(request, 'core/teacher_payroll.html', {'teacher_qs': teacher_qs, 'result': result})
+    return render(request, 'core/teacher_payroll.html', {
+        'teacher_qs': teacher_qs,
+        'result': result,
+        'months_list': months_list,
+        'selected_month': selected_month,
+        'selected_teacher_id': selected_teacher_id,
+    })
 
 
 def courses_list(request):
@@ -930,10 +947,12 @@ def group_detail(request, group_id):
     current_month_total = current_month_payments.aggregate(t=Sum('amount'))['t'] or 0
 
     schedules = group.schedules.all()
+    available_students = Student.objects.filter(is_active=True).exclude(enrollment__course_group=group).order_by('name')
 
     return render(request, 'core/course_group_detail.html', {
         'group': group,
         'students': students,
+        'available_students': available_students,
         'total_students': total_students,
         'monthly_revenue': monthly_revenue,
         'schedules': schedules,
@@ -2294,9 +2313,12 @@ def enrollment_add(request, student_id):
     """Add an enrollment for a student"""
     student = get_object_or_404(Student, pk=student_id)
     course_group_id = request.POST.get('course_group_id')
+    next_url = request.POST.get('next')
     
     if not course_group_id:
         messages.error(request, 'Veuillez sélectionner un groupe de cours')
+        if next_url:
+            return redirect(next_url)
         return redirect('core:student_page', student_id=student_id)
     
     course_group = get_object_or_404(CourseGroup, pk=course_group_id)
@@ -2304,6 +2326,8 @@ def enrollment_add(request, student_id):
     # Check if already enrolled
     if student.enrollment_set.filter(course_group=course_group).exists():
         messages.warning(request, f'{student.name} est déjà inscrit à {course_group.name}')
+        if next_url:
+            return redirect(next_url)
         return redirect('core:student_page', student_id=student_id)
     
     enrollment = Enrollment.objects.create(
@@ -2312,7 +2336,9 @@ def enrollment_add(request, student_id):
         is_active=True
     )
     
-    messages.success(request, f'Inscription à {course_group.name} ajoutée!')
+    messages.success(request, f'Inscription de {student.name} à {course_group.name} ajoutée !')
+    if next_url:
+        return redirect(next_url)
     return redirect('core:student_page', student_id=student_id)
 
 
@@ -2749,8 +2775,38 @@ def whatsapp_bulk_announcements(request):
 
         contacts = []
         seen_phones = set()
-
-        if audience_type == 'teachers':
+        if audience_type == 'custom':
+            custom_phones = request.POST.get('custom_phones', '').strip()
+            for line in custom_phones.splitlines():
+                line = line.strip()
+                if not line:
+                    continue
+                if ',' in line:
+                    parts = [p.strip() for p in line.split(',', 1)]
+                elif ';' in line:
+                    parts = [p.strip() for p in line.split(';', 1)]
+                elif '-' in line:
+                    parts = [p.strip() for p in line.split('-', 1)]
+                else:
+                    parts = [line]
+                
+                phone = parts[0]
+                name = parts[1] if len(parts) > 1 and parts[1] else 'Destinataire'
+                p_clean = WhatsAppUtils.clean_phone_number(phone)
+                if p_clean and p_clean not in seen_phones:
+                    seen_phones.add(p_clean)
+                    contacts.append({
+                        'phone': phone,
+                        'name': name,
+                        'student_name': name,
+                        'recipient_name': name,
+                        'recipient_type': 'Contact Annonce / Pub',
+                        'level': 'Contact Externe',
+                        'groups': 'Annonce / Publicité',
+                        'school_name': school_name,
+                        'date': today_str,
+                    })
+        elif audience_type == 'teachers':
             teacher_qs = Teacher.objects.filter(is_active=True).prefetch_related('course_groups')
             if teacher_ids:
                 teacher_qs = teacher_qs.filter(id__in=teacher_ids)
@@ -2904,6 +2960,7 @@ def whatsapp_bulk_announcements(request):
             'by_student': 'Sélection personnalisée d\'élèves',
             'by_payment': 'Filtré par statut de paiement',
             'teachers': 'Corps enseignant (Professeurs)',
+            'custom': 'Contacts personnalisés (Annonce / Publicité)',
         }
 
         context = {

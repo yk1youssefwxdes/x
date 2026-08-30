@@ -1586,7 +1586,7 @@
       font-size: 12px;
       font-weight: 700;
       color: var(--text-primary);
-      box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+      box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
     }
 
     @media (max-width: 576px) {
@@ -2253,8 +2253,11 @@
           {% endblock %}
         </div>
         <div class="d-none d-md-flex align-items-center gap-2">
-          <button type="button" class="btn btn-link p-0 text-decoration-none text-muted small d-flex align-items-center gap-1" id="openShortcutsBtn" title="Raccourcis clavier (Appuyez sur ?)">
-            <i class="bi bi-keyboard text-primary"></i> <span style="font-size:11.5px;">Raccourcis <kbd class="bg-light border text-dark px-1 py-0 rounded" style="font-size:10px;">?</kbd></span>
+          <button type="button"
+            class="btn btn-link p-0 text-decoration-none text-muted small d-flex align-items-center gap-1"
+            id="openShortcutsBtn" title="Raccourcis clavier (Appuyez sur ?)">
+            <i class="bi bi-keyboard text-primary"></i> <span style="font-size:11.5px;">Raccourcis <kbd
+                class="bg-light border text-dark px-1 py-0 rounded" style="font-size:10px;">?</kbd></span>
           </button>
         </div>
       </nav>
@@ -2269,8 +2272,10 @@
       <footer class="app-footer">
         <div style="margin-bottom: 4px;">&copy; {% now "Y" %} {{ SCHOOL_NAME }} — Système de Gestion Scolaire</div>
         <div style="font-size: 11px; opacity: 0.8;">
-          Construit par <a href="https://youssef-digital-card.vercel.app/" style="color: var(--primary); text-decoration: none;"><strong>Youssef Kotari</strong></a> &amp; · Développeur: <a
-            href="tel:0715125245" style="color: var(--primary); text-decoration: none; font-weight: 600;">0715125245</a>
+          Construit par <a href="https://youssef-digital-card.vercel.app/"
+            style="color: var(--primary); text-decoration: none;"><strong>Youssef Kotari</strong></a> &amp; ·
+          Développeur: <a href="tel:0715125245"
+            style="color: var(--primary); text-decoration: none; font-weight: 600;">0715125245</a>
         </div>
       </footer>
 
@@ -2287,23 +2292,27 @@
   </div>
 
   <!-- Back to Top button -->
-  <button type="button" class="back-to-top-btn" id="backToTopBtn" aria-label="Remonter en haut de page" title="Remonter en haut">
+  <button type="button" class="back-to-top-btn" id="backToTopBtn" aria-label="Remonter en haut de page"
+    title="Remonter en haut">
     <i class="bi bi-chevron-up" aria-hidden="true"></i>
   </button>
 
   <!-- Command Palette Modal (Ctrl+K) -->
-  <div class="cmd-palette-backdrop" id="cmdPaletteBackdrop" role="dialog" aria-modal="true" aria-label="Centre de commandes">
+  <div class="cmd-palette-backdrop" id="cmdPaletteBackdrop" role="dialog" aria-modal="true"
+    aria-label="Centre de commandes">
     <div class="cmd-palette-modal">
       <div class="cmd-palette-header">
         <i class="bi bi-search text-primary fs-5"></i>
-        <input type="text" id="cmdPaletteInput" class="cmd-palette-input" placeholder="Rechercher élève, page, action rapide..." autocomplete="off">
+        <input type="text" id="cmdPaletteInput" class="cmd-palette-input"
+          placeholder="Rechercher élève, page, action rapide..." autocomplete="off">
         <button type="button" class="btn-close btn-sm" id="cmdPaletteCloseBtn" aria-label="Fermer"></button>
       </div>
       <div class="cmd-palette-tabs">
         <button type="button" class="cmd-tab-btn active" data-tab="all">Tout</button>
         <button type="button" class="cmd-tab-btn" data-tab="students"><i class="bi bi-people me-1"></i>Élèves</button>
         <button type="button" class="cmd-tab-btn" data-tab="nav"><i class="bi bi-compass me-1"></i>Navigation</button>
-        <button type="button" class="cmd-tab-btn" data-tab="actions"><i class="bi bi-lightning-charge me-1"></i>Actions rapides</button>
+        <button type="button" class="cmd-tab-btn" data-tab="actions"><i class="bi bi-lightning-charge me-1"></i>Actions
+          rapides</button>
       </div>
       <div class="cmd-palette-results" id="cmdPaletteResults" role="listbox">
         <!-- Dynamic results -->
@@ -2331,35 +2340,44 @@
           <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Fermer"></button>
         </div>
         <div class="modal-body p-4">
-          <p class="small text-muted mb-3">Utilisez ces combinaisons pour travailler plus vite sans quitter le clavier :</p>
+          <p class="small text-muted mb-3">Utilisez ces combinaisons pour travailler plus vite sans quitter le clavier :
+          </p>
           <div class="d-flex flex-column gap-2">
             <div class="d-flex align-items-center justify-content-between p-2 rounded bg-light border">
-              <span class="small fw-semibold text-dark"><i class="bi bi-search me-2 text-primary"></i>Palette de commandes & Recherche</span>
+              <span class="small fw-semibold text-dark"><i class="bi bi-search me-2 text-primary"></i>Palette de
+                commandes & Recherche</span>
               <div><kbd class="kbd-chip">Ctrl</kbd> + <kbd class="kbd-chip">K</kbd></div>
             </div>
             <div class="d-flex align-items-center justify-content-between p-2 rounded bg-light border">
-              <span class="small fw-semibold text-dark"><i class="bi bi-cash-coin me-2 text-success"></i>Nouveau paiement (Caisse)</span>
+              <span class="small fw-semibold text-dark"><i class="bi bi-cash-coin me-2 text-success"></i>Nouveau
+                paiement (Caisse)</span>
               <div><kbd class="kbd-chip">Alt</kbd> + <kbd class="kbd-chip">P</kbd></div>
             </div>
             <div class="d-flex align-items-center justify-content-between p-2 rounded bg-light border">
-              <span class="small fw-semibold text-dark"><i class="bi bi-person-plus-fill me-2 text-info"></i>Ajouter un élève</span>
+              <span class="small fw-semibold text-dark"><i class="bi bi-person-plus-fill me-2 text-info"></i>Ajouter un
+                élève</span>
               <div><kbd class="kbd-chip">Alt</kbd> + <kbd class="kbd-chip">N</kbd></div>
             </div>
             <div class="d-flex align-items-center justify-content-between p-2 rounded bg-light border">
-              <span class="small fw-semibold text-dark"><i class="bi bi-calendar2-event me-2 text-warning"></i>Sessions du jour</span>
+              <span class="small fw-semibold text-dark"><i class="bi bi-calendar2-event me-2 text-warning"></i>Sessions
+                du jour</span>
               <div><kbd class="kbd-chip">Alt</kbd> + <kbd class="kbd-chip">T</kbd></div>
             </div>
             <div class="d-flex align-items-center justify-content-between p-2 rounded bg-light border">
-              <span class="small fw-semibold text-dark"><i class="bi bi-calendar3 me-2 text-primary"></i>Planification hebdomadaire</span>
+              <span class="small fw-semibold text-dark"><i class="bi bi-calendar3 me-2 text-primary"></i>Planification
+                hebdomadaire</span>
               <div><kbd class="kbd-chip">Alt</kbd> + <kbd class="kbd-chip">S</kbd></div>
             </div>
             <div class="d-flex align-items-center justify-content-between p-2 rounded bg-light border">
-              <span class="small fw-semibold text-dark"><i class="bi bi-whatsapp me-2 text-success"></i>Centre WhatsApp & Alertes</span>
+              <span class="small fw-semibold text-dark"><i class="bi bi-whatsapp me-2 text-success"></i>Centre WhatsApp
+                & Alertes</span>
               <div><kbd class="kbd-chip">Alt</kbd> + <kbd class="kbd-chip">W</kbd></div>
             </div>
             <div class="d-flex align-items-center justify-content-between p-2 rounded bg-light border">
-              <span class="small fw-semibold text-dark"><i class="bi bi-question-circle me-2 text-secondary"></i>Afficher cette aide</span>
-              <div><kbd class="kbd-chip">?</kbd> ou <kbd class="kbd-chip">Shift</kbd> + <kbd class="kbd-chip">?</kbd></div>
+              <span class="small fw-semibold text-dark"><i
+                  class="bi bi-question-circle me-2 text-secondary"></i>Afficher cette aide</span>
+              <div><kbd class="kbd-chip">?</kbd> ou <kbd class="kbd-chip">Shift</kbd> + <kbd class="kbd-chip">?</kbd>
+              </div>
             </div>
           </div>
         </div>

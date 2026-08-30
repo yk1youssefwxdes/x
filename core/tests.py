@@ -962,6 +962,69 @@ class WhatsAppBulkAnnouncementsTests(TestCase):
         self.assertIn('Math 2Bac Grp 1', bulk_links[0]['message'])
 
 
+class SimplifiedWorkflowsTestCase(TestCase):
+    def setUp(self):
+        self.user = get_user_model().objects.create_superuser(
+            username='admin_test',
+            email='admin@school.test',
+            password='password123'
+        )
+        self.client.force_login(self.user)
+        self.room = Room.objects.create(name="Salle 101", capacity=25)
+        self.teacher = Teacher.objects.create(
+            name="Professeur Karim",
+            phone="0611223344",
+            payment_method="PERCENTAGE",
+            payment_percentage=Decimal("50.00")
+        )
+        self.group = CourseGroup.objects.create(
+            name="Groupe Français B1",
+            subject="Français",
+            monthly_price=Decimal("400.00"),
+            teacher=self.teacher
+        )
+        self.student = Student.objects.create(
+            name="Yassine Benali",
+            parent_contact="0655443322",
+            is_active=True
+        )
+
+    def test_cockpit_context_contains_today_sessions_and_metrics(self):
+        today = timezone.now().date()
+        days = ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN']
+        today_code = days[today.weekday()]
+        CourseGroupSchedule.objects.create(
+            course_group=self.group,
+            day=today_code,
+            start_time=time(14, 0),
+            end_time=time(16, 0),
+            room=self.room
+        )
+        response = self.client.get(reverse('core:cockpit'))
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('today_sessions', response.context)
+        self.assertGreaterEqual(len(response.context['today_sessions']), 1)
+        self.assertIn('stats', response.context)
+        self.assertIn('today_total', response.context)
+        self.assertGreaterEqual(response.context['today_total'], 1)
+
+    def test_group_detail_provides_available_students(self):
+        response = self.client.get(reverse('core:group_detail', args=[self.group.id]))
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('available_students', response.context)
+        self.assertIn(self.student, response.context['available_students'])
+
+    def test_enrollment_add_supports_next_redirect(self):
+        next_url = reverse('core:group_detail', args=[self.group.id])
+        response = self.client.post(
+            reverse('core:enrollment_add', args=[self.student.id]),
+            {'course_group_id': self.group.id, 'next': next_url}
+        )
+        self.assertRedirects(response, next_url)
+        self.assertTrue(Enrollment.objects.filter(student=self.student, course_group=self.group).exists())
+
+
+
 
 
 

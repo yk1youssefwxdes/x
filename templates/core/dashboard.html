@@ -30,7 +30,8 @@
     font-weight: 700;
     letter-spacing: 0.06em;
     text-transform: uppercase;
-    color: var(--text-secondary);  /* ↑ from text-muted — stronger section label */
+    color: var(--text-secondary);
+    /* ↑ from text-muted — stronger section label */
     margin-bottom: 16px;
     display: flex;
     align-items: center;
@@ -51,7 +52,8 @@
 
   .kpi-card {
     background: var(--surface);
-    border: 1.5px solid #d1d5db;  /* ↑ stronger than --border for UI component boundary — WCAG 1.4.11 */
+    border: 1.5px solid #d1d5db;
+    /* ↑ stronger than --border for UI component boundary — WCAG 1.4.11 */
     border-radius: var(--radius-lg);
     padding: 24px 24px 20px;
     box-shadow: var(--shadow-sm);
@@ -121,8 +123,10 @@
     margin-top: 14px;
     padding-top: 12px;
     border-top: 1px solid var(--border);
-    font-size: 14px;               /* ↑ from 13.5px — more readable at small sizes */
-    font-weight: 500;              /* added — improves legibility for low-vision */
+    font-size: 14px;
+    /* ↑ from 13.5px — more readable at small sizes */
+    font-weight: 500;
+    /* added — improves legibility for low-vision */
     color: var(--text-secondary);
     display: flex;
     align-items: center;
@@ -152,7 +156,8 @@
     font-weight: 700;
     letter-spacing: 0.05em;
     text-transform: uppercase;
-    color: var(--text-secondary);  /* ↑ from text-muted — stronger panel label */
+    color: var(--text-secondary);
+    /* ↑ from text-muted — stronger panel label */
     margin-bottom: 16px;
     display: flex;
     align-items: center;
@@ -177,9 +182,11 @@
     justify-content: center;
     gap: 10px;
     padding: 24px 16px 20px;
-    min-height: 80px;              /* WCAG 2.5.5 — touch target for primary nav cards */
+    min-height: 80px;
+    /* WCAG 2.5.5 — touch target for primary nav cards */
     background: var(--surface-alt);
-    border: 1.5px solid #d1d5db;  /* ↑ stronger than --border — WCAG 1.4.11 */
+    border: 1.5px solid #d1d5db;
+    /* ↑ stronger than --border — WCAG 1.4.11 */
     border-radius: var(--radius-md);
     text-decoration: none;
     color: var(--text-primary);
@@ -214,8 +221,10 @@
   }
 
   .qa-card-desc {
-    font-size: 13.5px;             /* ↑ from 12.5px — improves readability */
-    color: var(--text-secondary);  /* ↑ from text-muted — better contrast */
+    font-size: 13.5px;
+    /* ↑ from 12.5px — improves readability */
+    color: var(--text-secondary);
+    /* ↑ from text-muted — better contrast */
     line-height: 1.4;
   }
 
@@ -490,7 +499,7 @@
 
 
 <!-- ── Red List ────────────────────────────────────────────────── -->
-<div class="red-list-section">
+<!-- <div class="red-list-section">
   <div class="dash-section-title">
     <i class="bi bi-exclamation-triangle-fill" style="color:#ef4444;"></i> Élèves avec paiements en retard
   </div>
@@ -579,7 +588,7 @@
     </div>
     {% endif %}
   </div>
-</div>
+</div> -->
 
 
 {% endblock %}

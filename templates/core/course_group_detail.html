@@ -232,11 +232,18 @@
   <!-- Students Tab -->
   <div class="tab-pane fade show active" id="students-tab">
     <div class="card">
-      <div class="card-header d-flex align-items-center justify-content-between">
-        <span class="fw-600">Élèves inscrits dans ce groupe</span>
-        <a href="{% url 'core:student_create' %}" class="btn btn-sm btn-primary">
-          <i class="bi bi-plus-lg"></i> Nouvel élève
-        </a>
+      <div class="card-header d-flex align-items-center justify-content-between flex-wrap gap-2">
+        <span class="fw-600">Élèves inscrits dans ce groupe ({{ total_students }})</span>
+        <div class="d-flex gap-2">
+          {% if available_students %}
+            <button class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#enrollStudentModal">
+              <i class="bi bi-person-plus-fill me-1"></i> + Inscrire un élève
+            </button>
+          {% endif %}
+          <a href="{% url 'core:student_create' %}" class="btn btn-sm btn-outline-primary">
+            <i class="bi bi-plus-lg me-1"></i> Nouvel élève
+          </a>
+        </div>
       </div>
       <div class="table-responsive">
         <table class="table table-hover mb-0">
@@ -454,5 +461,63 @@
     <i class="bi bi-trash"></i> Supprimer
   </a>
 </div>
+<!-- Enroll Student Modal -->
+{% if available_students %}
+<div class="modal fade" id="enrollStudentModal" tabindex="-1" aria-labelledby="enrollStudentModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <form method="post" id="enrollStudentForm">
+        {% csrf_token %}
+        <input type="hidden" name="course_group_id" value="{{ group.id }}">
+        <input type="hidden" name="next" value="{% url 'core:group_detail' group.id %}">
+        <div class="modal-header">
+          <h5 class="modal-title" id="enrollStudentModalLabel">
+            <i class="bi bi-person-plus-fill text-primary me-2"></i>Inscrire un élève au groupe
+          </h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <div class="mb-3">
+            <label for="studentSelect" class="form-label fw-600">Sélectionner l'élève :</label>
+            <select id="studentSelect" class="form-select select2" required style="width:100%;">
+              <option value="">-- Choisir un élève --</option>
+              {% for s in available_students %}
+                <option value="{{ s.id }}">{{ s.name }} {% if s.level %}({{ s.level.name }}){% endif %} - {{ s.parent_contact }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="alert alert-info small py-2 mb-0">
+            <i class="bi bi-info-circle me-1"></i> L'élève sera immédiatement ajouté au groupe « {{ group.name }} ».
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Annuler</button>
+          <button type="submit" class="btn btn-primary" id="confirmEnrollBtn">
+            <i class="bi bi-check-lg me-1"></i> Confirmer l'inscription
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  const form = document.getElementById('enrollStudentForm');
+  const select = document.getElementById('studentSelect');
+  if (form && select) {
+    form.addEventListener('submit', function(e) {
+      const studentId = select.value;
+      if (!studentId) {
+        e.preventDefault();
+        alert("Veuillez sélectionner un élève.");
+        return;
+      }
+      form.action = "/students/" + studentId + "/enrollment/add/";
+    });
+  }
+});
+</script>
+{% endif %}
 
 {% endblock %}

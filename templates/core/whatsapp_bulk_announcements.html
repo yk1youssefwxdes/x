@@ -187,9 +187,41 @@
               <div class="audience-check-icon"><i class="bi bi-check-circle-fill"></i></div>
             </label>
 
+            <!-- Custom Contacts / Ads / Prospects -->
+            <label class="audience-card" for="aud_custom">
+              <input type="radio" name="audience_type" id="aud_custom" value="custom">
+              <div class="audience-card-icon" style="background:#e0f2fe;color:#0284c7;">
+                <i class="bi bi-megaphone-fill"></i>
+              </div>
+              <div class="audience-card-info">
+                <div class="audience-card-title">Contacts Externes &amp; Publicités</div>
+                <div class="audience-card-desc">Saisir ou coller une liste de numéros (prospects, annonces)</div>
+              </div>
+              <div class="audience-check-icon"><i class="bi bi-check-circle-fill"></i></div>
+            </label>
+
           </div>
 
           <!-- Dynamic Sub-Panels based on selected audience -->
+          
+          <!-- Sub-panel: Custom Contacts (Annonces & Publicités) -->
+          <div id="panel-custom" class="audience-subpanel d-none">
+            <div class="d-flex align-items-center justify-content-between mb-2 flex-wrap gap-2">
+              <label class="form-label fw-semibold text-dark mb-0">
+                <i class="bi bi-card-checklist text-primary me-1"></i> Saisissez ou collez vos numéros de destinataires (1 par ligne) :
+              </label>
+              <small class="text-muted">Format accepté : <code>0612345678</code> ou <code>0612345678, Nom du contact</code></small>
+            </div>
+            <textarea name="custom_phones" id="custom_phones" class="form-control font-monospace" rows="5"
+                      placeholder="0612345678, M. Prospect&#10;0699887766, Mme Client&#10;0655443322"
+                      style="font-size:0.875rem;" oninput="updateEstimatedRecipients()"></textarea>
+            <div class="d-flex align-items-center justify-content-between mt-2 flex-wrap gap-2">
+              <small class="text-muted">
+                <i class="bi bi-info-circle me-1"></i> Vous pouvez coller directement une colonne depuis Excel ou un fichier texte.
+              </small>
+              <span class="badge bg-light text-dark border" id="customCountBadge">0 contact(s) détecté(s)</span>
+            </div>
+          </div>
           
           <!-- Sub-panel: Levels Selector -->
           <div id="panel-by-level" class="audience-subpanel d-none">
@@ -368,44 +400,6 @@
             </div>
 
             <div class="card-body p-4">
-
-              <!-- Category Templates Picker Accordion / Tabs -->
-              <div class="mb-3">
-                <div class="d-flex align-items-center justify-content-between mb-2">
-                  <label class="form-label fw-semibold text-secondary mb-0">
-                    <i class="bi bi-lightning-charge-fill text-warning me-1"></i> Modèles Prédéfinis :
-                  </label>
-                  <span class="text-muted small">Cliquez sur un modèle pour le charger</span>
-                </div>
-
-                <!-- Template Category Pills -->
-                <div class="template-categories-pills mb-2">
-                  {% for cat_key, cat_data in templates_catalog.items %}
-                    <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill template-cat-btn {% if forloop.first %}active{% endif %}"
-                            data-cat="{{ cat_key }}" onclick="switchTemplateCategory('{{ cat_key }}', this)">
-                      {{ cat_data.label }}
-                    </button>
-                  {% endfor %}
-                </div>
-
-                <!-- Template Cards Container -->
-                <div class="template-items-scroll border rounded-3 p-2 bg-light">
-                  {% for cat_key, cat_data in templates_catalog.items %}
-                    <div class="template-group {% if not forloop.first %}d-none{% endif %}" id="template-cat-{{ cat_key }}">
-                      <div class="d-flex gap-2 flex-wrap">
-                        {% for tpl in cat_data.templates %}
-                          <button type="button" class="btn btn-sm btn-white border shadow-xs template-pill-item"
-                                  data-template="{{ tpl.text|escapejs }}"
-                                  onclick="applyTemplate(this)">
-                            <span class="badge bg-primary-subtle text-primary me-1">{{ tpl.badge }}</span>
-                            {{ tpl.title }}
-                          </button>
-                        {% endfor %}
-                      </div>
-                    </div>
-                  {% endfor %}
-                </div>
-              </div>
 
               <!-- Dynamic Variable Badges Toolbar -->
               <div class="mb-3">
@@ -1269,21 +1263,21 @@ function toggleSubpanels(aud) {
   // Hide all subpanels first
   document.querySelectorAll('.audience-subpanel').forEach(el => el.classList.add('d-none'));
   
-  // Show channel row only if audience is relevant to students
+  // Show channel row only for audiences that need it
   const channelRow = document.getElementById('contactChannelRow');
-  if (aud === 'teachers') {
-    if (channelRow) channelRow.classList.add('d-none');
-  } else if (aud === 'all_parents' || aud === 'all_students' || aud === 'all_parents_students') {
-    if (channelRow) channelRow.classList.add('d-none');
-  } else {
-    if (channelRow) channelRow.classList.remove('d-none');
+  const hideChannelFor = ['teachers', 'all_parents', 'all_students', 'all_parents_students', 'custom'];
+  if (channelRow) {
+    if (hideChannelFor.includes(aud)) {
+      channelRow.classList.add('d-none');
+    } else {
+      channelRow.classList.remove('d-none');
+    }
   }
 
-  // Show specific subpanel
-  const panel = document.getElementById('panel-' + aud.replace('_', '-'));
-  if (panel) {
-    panel.classList.remove('d-none');
-  }
+  // Show specific subpanel — handle multi-word keys like by_level -> panel-by-level
+  const panelId = 'panel-' + aud.replace(/_/g, '-');
+  const panel = document.getElementById(panelId);
+  if (panel) panel.classList.remove('d-none');
 }
 
 function toggleAllCheckboxes(name, state) {
@@ -1311,7 +1305,15 @@ function updateEstimatedRecipients() {
   let count = 0;
   const channel = document.getElementById('contact_channel')?.value || 'all_available';
 
-  if (currentAudience === 'teachers') {
+  if (currentAudience === 'custom') {
+    const ta = document.getElementById('custom_phones');
+    if (ta) {
+      const lines = ta.value.split('\n').filter(l => l.trim().length > 0);
+      count = lines.length;
+      const badge = document.getElementById('customCountBadge');
+      if (badge) badge.textContent = count + ' contact(s) détecté(s)';
+    }
+  } else if (currentAudience === 'teachers') {
     const checkedTIds = Array.from(document.querySelectorAll('input[name="teacher_ids"]:checked')).map(cb => parseInt(cb.value));
     count = allTeachers.filter(t => t.has_phone && (checkedTIds.length === 0 || checkedTIds.includes(t.id))).length;
   } else {

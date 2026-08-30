@@ -30,7 +30,8 @@
     padding: 9px 14px;
     cursor: pointer;
     font-size: 14px;
-    border-bottom: 1px solid #d1d5db;  /* ↑ from #f0f0f0 — WCAG 1.4.11 */
+    border-bottom: 1px solid #d1d5db;
+    /* ↑ from #f0f0f0 — WCAG 1.4.11 */
     transition: background 0.15s;
   }
 
@@ -71,25 +72,22 @@
               Élève
             </label>
             <div class="position-relative" id="student-search-wrapper">
-                <div class="input-group">
-                    <input type="text"
-                          id="student-search-input"
-                          class="form-control"
-                          placeholder="Tapez le nom de l'élève..."
-                          autocomplete="off">
+              <div class="input-group">
+                <input type="text" id="student-search-input" class="form-control"
+                  placeholder="Tapez le nom de l'élève..." autocomplete="off">
 
-                    <button type="button"
-                            class="btn btn-outline-secondary"
-                            id="clear-student"
-                            title="Effacer"
-                            style="display:none;">
-                        <i class="bi bi-x-lg"></i>
-                    </button>
-                </div>
+                <button type="button" class="btn btn-outline-secondary" id="clear-student" title="Effacer"
+                  style="display:none;">
+                  <i class="bi bi-x-lg"></i>
+                </button>
+              </div>
 
-                <input type="hidden" name="student_id" id="student-hidden">              <div id="student-dropdown" class="position-absolute w-100 bg-white border rounded shadow-sm"
+              <input type="hidden" name="student_id" id="student-hidden">
+              <div id="student-dropdown" class="position-absolute w-100 bg-white border rounded shadow-sm"
                 style="z-index:1050; display:none; max-height:240px; overflow-y:auto; top:calc(100% + 2px); left:0;">
-                <div id="student-dropdown-status" class="px-3 py-2" style="font-size:13.5px;color:var(--text-secondary);">Tapez pour rechercher...</div><!-- ↑ text-muted+small → explicit size+color — WCAG AA -->
+                <div id="student-dropdown-status" class="px-3 py-2"
+                  style="font-size:13.5px;color:var(--text-secondary);">Tapez pour rechercher...</div>
+                <!-- ↑ text-muted+small → explicit size+color — WCAG AA -->
                 <ul id="student-dropdown-list" class="list-unstyled mb-0"></ul>
               </div>
             </div>
@@ -101,8 +99,10 @@
               <div class="student-avatar" id="student-avatar">?</div>
               <div>
                 <strong id="student-name" class="d-block"></strong>
-                <span id="student-matricule" class="badge" style="font-size:12.5px;background:var(--primary-light);color:#1d4ed8;display:none;"></span><!-- ↑ 11px→12.5px, primary→#1d4ed8 (4.8:1) — WCAG AA -->
-                <span class="d-block" style="font-size:13px;color:var(--text-secondary);">Groupes inscrits</span><!-- ↑ small+text-muted → explicit — WCAG AA -->
+                <span id="student-matricule" class="badge"
+                  style="font-size:12.5px;background:var(--primary-light);color:#1d4ed8;display:none;"></span><!-- ↑ 11px→12.5px, primary→#1d4ed8 (4.8:1) — WCAG AA -->
+                <span class="d-block" style="font-size:13px;color:var(--text-secondary);">Groupes
+                  inscrits</span><!-- ↑ small+text-muted → explicit — WCAG AA -->
               </div>
             </div>
             <div id="student-groups" class="d-flex flex-column gap-1"></div>
@@ -156,7 +156,8 @@
           </div>
 
           <!-- Submit -->
-          <button type="submit" class="btn btn-success w-100" style="min-height:52px;font-size:16px;"><!-- prominent CTA — WCAG 2.5.5 -->
+          <button type="submit" class="btn btn-success w-100"
+            style="min-height:52px;font-size:16px;"><!-- prominent CTA — WCAG 2.5.5 -->
             <i class="bi bi-check-circle-fill" aria-hidden="true"></i> Confirmer et générer reçu PDF
           </button>
         </form>
@@ -208,14 +209,14 @@
     }
 
     function doSearch(q) {
-        $.get('/cashier/student-unpaid-search/', {
-            q: q,
-            month: $('#month_covered').val()
-        }, function (data) {
-            renderResults(data.results || []);
-        }).fail(function () {
-            $status.show().text('Erreur lors de la recherche.');
-        });
+      $.get('/cashier/student-unpaid-search/', {
+        q: q,
+        month: $('#month_covered').val()
+      }, function (data) {
+        renderResults(data.results || []);
+      }).fail(function () {
+        $status.show().text('Erreur lors de la recherche.');
+      });
     }
 
     /* ── events ────────────────────────────────────────── */
@@ -233,26 +234,26 @@
     });
 
     $('#clear-student').on('click', function () {
-        $input.val('');
-        $hidden.val('');
+      $input.val('');
+      $hidden.val('');
 
-        $('#student-info').hide();
-        $('#student-groups').empty();
-        $('#amount').val('');
+      $('#student-info').hide();
+      $('#student-groups').empty();
+      $('#amount').val('');
 
-        $(this).hide();
+      $(this).hide();
 
-        $input.focus();
+      $input.focus();
     });
 
     $('#month_covered').on('change', function () {
-        var studentId = $hidden.val();
+      var studentId = $hidden.val();
 
-        if (studentId) {
-            loadStudentInfo(studentId);
-        }
+      if (studentId) {
+        loadStudentInfo(studentId);
+      }
 
-        doSearch($input.val().trim());
+      doSearch($input.val().trim());
     });
 
     // Click / focus → open + load if empty

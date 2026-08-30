@@ -282,10 +282,12 @@
                 <a href="{% url 'core:student_page' student.id %}" class="btn btn-sm btn-outline-primary"
                    title="Voir le profil" aria-label="Voir le profil de {{ student.name }}">
                   <i class="bi bi-eye" aria-hidden="true"></i>
+                  <span class="d-none d-xl-inline"> Profil</span>
                 </a>
                 <a href="{% url 'core:payment_create' %}?student_id={{ student.id }}" class="btn btn-sm btn-success"
                    title="Encaisser" aria-label="Encaisser un paiement pour {{ student.name }}">
                   <i class="bi bi-cash-coin" aria-hidden="true"></i>
+                  <span class="d-none d-xl-inline"> Payer</span>
                 </a>
                 {% if student.parent_contact %}
                 <a href="https://wa.me/212{{ student.parent_contact|cut:' '|cut:'-'|cut:'.'|slice:'-9:' }}" target="_blank" class="btn btn-sm btn-outline-success"

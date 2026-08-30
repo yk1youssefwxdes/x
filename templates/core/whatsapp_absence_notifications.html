@@ -9,17 +9,17 @@
 {% endblock %}
 
 {% block content %}
-<div class="page-header d-flex align-items-start justify-content-between">
+<div class="page-header d-flex align-items-start justify-content-between flex-wrap gap-3">
   <div>
     <h1 class="page-title">
-      <i class="bi bi-whatsapp me-2" style="color:#25d366;"></i>Notifications d'absence
+      <i class="bi bi-whatsapp me-2" style="color:#25d366;"></i>Notifications d'absence WhatsApp
     </h1>
     <p class="page-subtitle">
       Informez les parents des absences de leurs enfants via WhatsApp
       {% if not status_data.offline and status_data.status == 'READY' %}
-        <span class="badge bg-success ms-2"><i class="bi bi-shield-fill-check"></i> Service Actif</span>
+        <span class="badge bg-success ms-2"><i class="bi bi-shield-fill-check"></i> Service Connecté</span>
       {% else %}
-        <span class="badge bg-secondary ms-2"><i class="bi bi-exclamation-triangle"></i> Mode Manuel</span>
+        <span class="badge bg-secondary ms-2"><i class="bi bi-exclamation-triangle"></i> Mode Manuel / Web</span>
       {% endif %}
     </p>
   </div>
@@ -32,12 +32,12 @@
       <div class="card-body">
         <form method="get" class="row g-3 align-items-end">
           <div class="col-md-8">
-            <label class="form-label">Date</label>
+            <label class="form-label fw-600">Sélectionner la date des séances</label>
             <input type="date" class="form-control" name="date" value="{{ target_date|date:'Y-m-d' }}">
           </div>
           <div class="col-md-4">
             <button type="submit" class="btn btn-primary w-100">
-              <i class="bi bi-search"></i> Rechercher
+              <i class="bi bi-search me-1"></i> Rechercher
             </button>
           </div>
         </form>
@@ -50,7 +50,7 @@
     <div class="stat-card h-100">
       <div class="d-flex align-items-center justify-content-between">
         <div>
-          <div class="stat-card-label">Total absences</div>
+          <div class="stat-card-label">Total absences du jour</div>
           <div class="stat-card-value" style="color:var(--warning);">{{ total_absences }}</div>
           <small class="text-muted">{{ target_date|date:"d/m/Y" }}</small>
         </div>
@@ -64,15 +64,21 @@
 
 <!-- Absences card -->
 <div class="card">
-  <div class="card-header d-flex align-items-center justify-content-between">
+  <div class="card-header d-flex align-items-center justify-content-between flex-wrap gap-2">
     <div class="d-flex align-items-center gap-2">
       <span class="stat-card-icon" style="width:26px;height:26px;font-size:12px;background:#fef3c7;">
         <i class="bi bi-person-x-fill" style="color:#d97706;"></i>
       </span>
       <span class="fw-600">Absences du {{ target_date|date:"d/m/Y" }}</span>
+      {% if absence_contacts %}
+        <span class="badge badge-warning ms-1">{{ total_absences }}</span>
+      {% endif %}
     </div>
-    {% if absence_contacts|length > 0 %}
-      <div>
+    {% if absence_contacts %}
+      <div class="d-flex flex-wrap gap-2">
+        <button type="button" class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#bulkAbsenceTemplateModal">
+          <i class="bi bi-pencil-square me-1"></i> Modifier le message pour tous
+        </button>
         {% if not status_data.offline and status_data.status == 'READY' %}
           <button type="button" class="btn btn-sm btn-success" id="auto-send-all-btn"
                   style="background:#25d366;border-color:#25d366;">
@@ -81,7 +87,7 @@
         {% else %}
           <button type="button" class="btn btn-sm btn-success" id="send-all-btn"
                   style="background:#25d366;border-color:#25d366;">
-            <i class="bi bi-whatsapp"></i> Notifier tous (Manuel)
+            <i class="bi bi-whatsapp me-1"></i> Notifier tous (Manuel)
           </button>
         {% endif %}
       </div>
@@ -90,15 +96,22 @@
 
   {% if absence_contacts %}
     <div class="table-responsive">
-      <table class="table table-hover mb-0">
+      <table class="table table-hover align-middle mb-0">
         <thead>
           <tr>
-            <th>#</th><th>Élève</th><th>Parent</th><th>Cours</th><th>Heure</th><th>Salle</th><th>Message</th><th>Action</th>
+            <th style="width:40px;">#</th>
+            <th>Élève</th>
+            <th>Parent</th>
+            <th>Cours</th>
+            <th>Heure</th>
+            <th>Salle</th>
+            <th>Message</th>
+            <th class="text-end" style="width:160px;">Action</th>
           </tr>
         </thead>
         <tbody>
           {% for contact in absence_contacts %}
-            <tr>
+            <tr data-student-row="{{ forloop.counter }}" data-student-name="{{ contact.student_name }}" data-parent-name="{{ contact.name }}" data-course-name="{{ contact.course_name }}" data-phone="{{ contact.phone }}">
               <td class="text-muted">{{ forloop.counter }}</td>
               <td><strong>{{ contact.student_name }}</strong></td>
               <td>{{ contact.name }}</td>
@@ -112,25 +125,25 @@
                 <button class="btn btn-sm btn-outline-secondary"
                         data-bs-toggle="modal"
                         data-bs-target="#absenceModal{{ forloop.counter }}">
-                  <i class="bi bi-eye"></i> Voir
+                  <i class="bi bi-pencil me-1"></i> Voir / Modifier
                 </button>
               </td>
-              <td>
+              <td class="text-end">
                 {% if not status_data.offline and status_data.status == 'READY' %}
-                  <div class="d-flex align-items-center gap-1">
-                    <button class="btn btn-sm btn-success auto-send-btn" 
+                  <div class="d-flex align-items-center justify-content-end gap-1">
+                    <button class="btn btn-sm btn-success auto-send-btn row-send-btn" 
                             data-phone="{{ contact.phone }}" 
                             data-message="{{ contact.message }}"
                             style="background:#25d366;border-color:#25d366;">
                       <i class="bi bi-send-fill"></i> Notifier
                     </button>
-                    <a href="{{ contact.whatsapp_link }}" target="_blank" class="btn btn-sm btn-outline-secondary" title="Ouvrir dans WhatsApp Web">
-                      <i class="bi bi-whatsapp"></i>
+                    <a href="{{ contact.whatsapp_link }}" target="_blank" class="btn btn-sm btn-outline-secondary row-wa-link" title="Ouvrir dans WhatsApp Web">
+                      <i class="bi bi-whatsapp text-success"></i>
                     </a>
                   </div>
                 {% else %}
                   <a href="{{ contact.whatsapp_link }}" target="_blank"
-                     class="btn btn-sm btn-success whatsapp-link"
+                     class="btn btn-sm btn-success whatsapp-link row-wa-link"
                      style="background:#25d366;border-color:#25d366;">
                     <i class="bi bi-whatsapp"></i> Notifier
                   </a>
@@ -142,15 +155,51 @@
       </table>
     </div>
   {% else %}
-    <div class="card-body empty-state">
-      <div class="empty-state-icon" style="color:var(--success);opacity:1;"><i class="bi bi-check-circle-fill"></i></div>
-      <div class="empty-state-title">Aucune absence enregistrée</div>
-      <div class="empty-state-text">Tous les élèves étaient présents pour cette date.</div>
+    <div class="card-body empty-state text-center py-5">
+      <div class="empty-state-icon" style="color:var(--success);opacity:1;font-size:42px;"><i class="bi bi-check-circle-fill"></i></div>
+      <div class="empty-state-title mt-2 fw-700">Aucune absence enregistrée</div>
+      <div class="empty-state-text text-muted">Tous les élèves pointés étaient présents pour cette date.</div>
     </div>
   {% endif %}
 </div>
 
-<!-- Modals -->
+<!-- Modal 1: Bulk Message Template Editor -->
+<div class="modal fade" id="bulkAbsenceTemplateModal" tabindex="-1" aria-labelledby="bulkAbsenceTemplateModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="bulkAbsenceTemplateModalLabel">
+          <i class="bi bi-pencil-square text-primary me-2"></i>Modifier le message d'absence pour tous
+        </h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <p class="text-muted small mb-3">
+          Vous pouvez personnaliser le texte ci-dessous. Les variables entre accolades seront automatiquement remplacées par les informations réelles :
+        </p>
+        <div class="d-flex flex-wrap gap-2 mb-3">
+          <button type="button" class="btn btn-xs btn-outline-secondary insert-var-abs" data-var="{parent}">+ {parent}</button>
+          <button type="button" class="btn btn-xs btn-outline-secondary insert-var-abs" data-var="{eleve}">+ {eleve}</button>
+          <button type="button" class="btn btn-xs btn-outline-secondary insert-var-abs" data-var="{cours}">+ {cours}</button>
+          <button type="button" class="btn btn-xs btn-outline-secondary insert-var-abs" data-var="{date}">+ {date}</button>
+          <button type="button" class="btn btn-xs btn-outline-secondary insert-var-abs" data-var="{ecole}">+ {ecole}</button>
+        </div>
+        <div class="mb-3">
+          <label for="bulkAbsenceTextarea" class="form-label fw-600">Modèle de message d'absence :</label>
+          <textarea id="bulkAbsenceTextarea" class="form-control" rows="5" style="font-size: 14px;">Bonjour {parent}, nous vous informons que {eleve} était absent(e) au cours de {cours} du {date}. Merci de contacter l'administration {ecole} pour plus d'informations.</textarea>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Annuler</button>
+        <button type="button" class="btn btn-primary" id="applyBulkAbsenceBtn" data-bs-dismiss="modal">
+          <i class="bi bi-check-lg me-1"></i> Appliquer à tous les messages
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal 2: Individual Modals (Editable per student) -->
 {% for contact in absence_contacts %}
   <div class="modal fade" id="absenceModal{{ forloop.counter }}" tabindex="-1">
     <div class="modal-dialog modal-dialog-centered">
@@ -161,7 +210,7 @@
         </div>
         <div class="modal-body">
           <div class="row g-2 mb-3">
-            <div class="col-6"><div class="info-label">Élève</div><div class="info-value">{{ contact.student_name }}</div></div>
+            <div class="col-6"><div class="info-label">Élève</div><div class="info-value fw-600">{{ contact.student_name }}</div></div>
             <div class="col-6"><div class="info-label">Parent</div><div class="info-value">{{ contact.name }}</div></div>
             <div class="col-6"><div class="info-label">Téléphone</div><div class="info-value">{{ contact.phone }}</div></div>
             {% if contact.course_name %}<div class="col-6"><div class="info-label">Cours</div><div class="info-value">{{ contact.course_name }}</div></div>{% endif %}
@@ -169,20 +218,21 @@
             {% if contact.room %}<div class="col-6"><div class="info-label">Salle</div><div class="info-value">{{ contact.room }}</div></div>{% endif %}
           </div>
           <hr>
-          <div class="form-label mb-2">Message WhatsApp :</div>
-          <div class="p-3 rounded" style="background:var(--surface-alt);white-space:pre-wrap;font-size:13px;border:1px solid var(--border);">{{ contact.message }}</div>
+          <div class="form-label mb-2 fw-600">Message WhatsApp (modifiable) :</div>
+          <textarea class="form-control ind-absence-textarea" id="indAbsenceTextarea{{ forloop.counter }}" data-row="{{ forloop.counter }}" rows="5" style="font-size:13.5px;">{{ contact.message }}</textarea>
+          <small class="text-muted d-block mt-1">Vous pouvez modifier directement le texte avant d'envoyer.</small>
         </div>
         <div class="modal-footer">
           <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Fermer</button>
           {% if not status_data.offline and status_data.status == 'READY' %}
-            <button class="btn btn-success auto-send-btn" data-phone="{{ contact.phone }}" data-message="{{ contact.message }}" data-bs-dismiss="modal"
+            <button class="btn btn-success modal-abs-send-btn" data-row="{{ forloop.counter }}" data-phone="{{ contact.phone }}" data-bs-dismiss="modal"
                     style="background:#25d366;border-color:#25d366;">
-              <i class="bi bi-send-fill"></i> Envoyer automatiquement
+              <i class="bi bi-send-fill me-1"></i> Envoyer
             </button>
           {% else %}
-            <a href="{{ contact.whatsapp_link }}" target="_blank" class="btn btn-success" data-bs-dismiss="modal"
+            <a href="{{ contact.whatsapp_link }}" target="_blank" class="btn btn-success modal-abs-wa-link" data-row="{{ forloop.counter }}" data-phone="{{ contact.phone }}" data-bs-dismiss="modal"
                style="background:#25d366;border-color:#25d366;">
-              <i class="bi bi-whatsapp"></i> Envoyer via WhatsApp (manuel)
+              <i class="bi bi-whatsapp me-1"></i> Envoyer via WhatsApp
             </a>
           {% endif %}
         </div>
@@ -193,7 +243,7 @@
 
 <style>
   .fw-600 { font-weight: 600; }
-  .info-label { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-muted); margin-bottom: 2px; }
+  .info-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-muted); margin-bottom: 2px; }
   .info-value { font-size: 14px; font-weight: 500; }
 </style>
 {% endblock %}
@@ -206,12 +256,74 @@ $(document).ready(function() {
     headers: { "X-CSRFToken": "{{ csrf_token }}" }
   });
 
-  // Single Auto-Send
-  $('.auto-send-btn').on('click', function () {
-    const $btn = $(this);
-    const phone = $btn.data('phone');
-    const message = $btn.data('message');
+  const schoolName = "{{ SCHOOL_NAME|escapejs }}";
+  const targetDateStr = "{{ target_date|date:'d/m/Y'|escapejs }}";
+
+  function makeWaLink(phone, msg) {
+    let cleanPhone = phone.replace(/[^0-9]/g, '');
+    if (cleanPhone.startsWith('0')) {
+      cleanPhone = '212' + cleanPhone.slice(1);
+    }
+    return "https://wa.me/" + cleanPhone + "?text=" + encodeURIComponent(msg);
+  }
+
+  // Insert variable into bulk template textarea
+  $('.insert-var-abs').on('click', function() {
+    const v = $(this).data('var');
+    const $txt = $('#bulkAbsenceTextarea');
+    const pos = $txt.prop('selectionStart');
+    const val = $txt.val();
+    $txt.val(val.substring(0, pos) + v + val.substring(pos));
+    $txt.focus();
+  });
+
+  // Apply Bulk Template to all rows
+  $('#applyBulkAbsenceBtn').on('click', function() {
+    const template = $('#bulkAbsenceTextarea').val();
     
+    $('tr[data-student-row]').each(function() {
+      const $row = $(this);
+      const rowNum = $row.data('student-row');
+      const studentName = $row.data('student-name');
+      const parentName = $row.data('parent-name');
+      const courseName = $row.data('course-name');
+      const phone = $row.data('phone');
+
+      let personalizedMsg = template
+        .replace(/{parent}/g, parentName)
+        .replace(/{eleve}/g, studentName)
+        .replace(/{cours}/g, courseName)
+        .replace(/{date}/g, targetDateStr)
+        .replace(/{ecole}/g, schoolName);
+
+      // Update modal textarea
+      $('#indAbsenceTextarea' + rowNum).val(personalizedMsg);
+
+      // Update buttons
+      $row.find('.row-send-btn').data('message', personalizedMsg);
+      $row.find('.row-wa-link').attr('href', makeWaLink(phone, personalizedMsg));
+      $('#absenceModal' + rowNum).find('.modal-abs-send-btn').data('message', personalizedMsg);
+      $('#absenceModal' + rowNum).find('.modal-abs-wa-link').attr('href', makeWaLink(phone, personalizedMsg));
+    });
+
+    alert("Le modèle d'absence a été appliqué avec succès à tous les destinataires.");
+  });
+
+  // When user edits an individual absence message
+  $('.ind-absence-textarea').on('input change', function() {
+    const $textarea = $(this);
+    const rowNum = $textarea.data('row');
+    const newMsg = $textarea.val();
+    const $row = $('tr[data-student-row="' + rowNum + '"]');
+    const phone = $row.data('phone');
+
+    $row.find('.row-send-btn').data('message', newMsg);
+    $row.find('.row-wa-link').attr('href', makeWaLink(phone, newMsg));
+    $('#absenceModal' + rowNum).find('.modal-abs-send-btn').data('message', newMsg);
+    $('#absenceModal' + rowNum).find('.modal-abs-wa-link').attr('href', makeWaLink(phone, newMsg));
+  });
+
+  function sendSingleAbsence($btn, phone, message, $row) {
     $btn.prop('disabled', true).html('<span class="spinner-border spinner-border-sm" role="status"></span>...');
     
     $.ajax({
@@ -219,24 +331,46 @@ $(document).ready(function() {
       method: "POST",
       data: { phone: phone, message: message, message_type: "absence_notification" },
       success: function (response) {
-        $btn.removeClass('btn-success').addClass('btn-secondary').html('<i class="bi bi-check"></i> Envoyé').prop('disabled', true);
-        $btn.closest('tr').addClass('table-success').css('transition', 'all 0.5s ease');
+        $btn.removeClass('btn-success').addClass('btn-secondary').html('<i class="bi bi-check-lg"></i> Envoyé').prop('disabled', true);
+        if ($row) {
+          $row.addClass('table-success').css('transition', 'all 0.5s ease');
+          $row.find('.row-send-btn').removeClass('btn-success').addClass('btn-secondary').html('<i class="bi bi-check-lg"></i> Envoyé').prop('disabled', true);
+        }
       },
       error: function (xhr) {
         $btn.prop('disabled', false)
           .removeClass('btn-success btn-secondary')
           .addClass('btn-danger')
-          .html('<i class="bi bi-arrow-clockwise"></i> Réessayer')
-          .css({ background: '#dc3545', borderColor: '#dc3545' });
+          .html('<i class="bi bi-arrow-clockwise"></i> Réessayer');
         alert("Erreur lors de l'envoi : " + (xhr.responseJSON?.error || xhr.statusText));
       }
     });
+  }
+
+  // Row Send
+  $(document).on('click', '.row-send-btn', function () {
+    const $btn = $(this);
+    const phone = $btn.data('phone');
+    const message = $btn.data('message');
+    const $row = $btn.closest('tr');
+    sendSingleAbsence($btn, phone, message, $row);
+  });
+
+  // Modal Send
+  $(document).on('click', '.modal-abs-send-btn', function () {
+    const $modalBtn = $(this);
+    const rowNum = $modalBtn.data('row');
+    const phone = $modalBtn.data('phone');
+    const message = $('#indAbsenceTextarea' + rowNum).val();
+    const $row = $('tr[data-student-row="' + rowNum + '"]');
+    const $rowBtn = $row.find('.row-send-btn');
+    sendSingleAbsence($rowBtn, phone, message, $row);
   });
 
   // Bulk Auto-Send
   $('#auto-send-all-btn').on('click', function () {
     const contacts = [];
-    $('table .auto-send-btn').each(function () {
+    $('table .row-send-btn').each(function () {
       const $btn = $(this);
       if (!$btn.hasClass('btn-secondary') && !$btn.closest('tr').hasClass('table-success')) {
         contacts.push({
@@ -253,7 +387,7 @@ $(document).ready(function() {
       return;
     }
 
-    if (!confirm(`Voulez-vous envoyer automatiquement ${total} messages d'absence ?\n(Un délai de 1.5 seconde sera appliqué entre chaque envoi)`)) {
+    if (!confirm(`Voulez-vous envoyer automatiquement ${total} messages d'absence ?`)) {
       return;
     }
 
@@ -261,71 +395,34 @@ $(document).ready(function() {
     const origHtml = $btn.html();
     $btn.prop('disabled', true).html(`<i class="bi bi-hourglass-split"></i> Envoi en cours...`);
 
-    // Create progress banner above table
-    if ($('#bulk-progress-banner').length === 0) {
-      $('.card').last().before(`
-        <div id="bulk-progress-banner" class="alert alert-info mb-4 shadow-sm" style="border-radius:10px;">
-          <div class="d-flex align-items-center justify-content-between mb-2">
-            <strong><i class="bi bi-send-fill me-2"></i> Envoi groupé d'absences en cours...</strong>
-            <span id="bulk-progress-text" class="fw-bold">0 / ${total}</span>
-          </div>
-          <div class="progress" style="height: 10px; border-radius:5px;">
-            <div id="bulk-progress-bar" class="progress-bar progress-bar-striped progress-bar-animated bg-success" role="progressbar" style="width: 0%"></div>
-          </div>
-        </div>
-      `);
-    } else {
-      $('#bulk-progress-banner').removeClass('d-none');
-      $('#bulk-progress-text').text(`0 / ${total}`);
-      $('#bulk-progress-bar').css('width', '0%');
-    }
-
     let index = 0;
     function sendNext() {
       if (index >= total) {
         $btn.html('<i class="bi bi-check-circle"></i> Terminé !');
-        $('#bulk-progress-bar').removeClass('progress-bar-striped progress-bar-animated');
         setTimeout(function () {
           $btn.html(origHtml).prop('disabled', false);
-          $('#bulk-progress-banner').fadeOut(1000, function() { $(this).addClass('d-none').show(); });
         }, 3000);
         return;
       }
 
       const item = contacts[index];
       const $itemBtn = item.btn;
-      
       $itemBtn.prop('disabled', true).html('<span class="spinner-border spinner-border-sm" role="status"></span>');
       
       $.ajax({
         url: "{% url 'core:whatsapp_send_ajax' %}",
         method: "POST",
         data: { phone: item.phone, message: item.message, message_type: "absence_notification" },
-        success: function (response) {
+        success: function () {
           $itemBtn.removeClass('btn-success').addClass('btn-secondary').html('<i class="bi bi-check"></i> Envoyé').prop('disabled', true);
-          $itemBtn.closest('tr').addClass('table-success').css('transition', 'all 0.5s ease');
-          
-          index++;
-          const percentage = Math.round((index / total) * 100);
-          $('#bulk-progress-text').text(`${index} / ${total}`);
-          $('#bulk-progress-bar').css('width', `${percentage}%`);
-          
-          setTimeout(sendNext, 1500);
+          $itemBtn.closest('tr').addClass('table-success');
         },
-        error: function (xhr) {
-          $itemBtn.prop('disabled', false)
-            .removeClass('btn-success btn-secondary')
-            .addClass('btn-danger')
-            .html('<i class="bi bi-arrow-clockwise"></i> Réessayer')
-            .css({ background: '#dc3545', borderColor: '#dc3545' });
-          console.error("Error sending to " + item.phone, xhr);
-          
+        error: function () {
+          $itemBtn.removeClass('btn-success').addClass('btn-danger').html('<i class="bi bi-x"></i> Échec').prop('disabled', false);
+        },
+        complete: function () {
           index++;
-          const percentage = Math.round((index / total) * 100);
-          $('#bulk-progress-text').text(`${index} / ${total}`);
-          $('#bulk-progress-bar').css('width', `${percentage}%`);
-          
-          setTimeout(sendNext, 1500);
+          setTimeout(sendNext, 1200);
         }
       });
     }
@@ -335,25 +432,15 @@ $(document).ready(function() {
 
   // Manual bulk send
   $('#send-all-btn').on('click', function() {
-    const total = {{ absence_contacts|length }};
-    if (!confirm(`Envoyer ${total} notifications d'absence via WhatsApp?`)) return;
-    const links = document.querySelectorAll('.whatsapp-link');
-    let count = 0;
-    const $btn = $(this);
-    links.forEach((link, i) => {
-      setTimeout(() => {
-        window.open(link.href, '_blank');
-        count++;
-        $btn.html(`<i class="bi bi-hourglass-split"></i> ${count}/${total}...`);
-        if (count === total) {
-          setTimeout(() => $btn.html(`<i class="bi bi-check-circle"></i> Terminé!`), 500);
-        }
-      }, i * 500);
-    });
-  });
-
-  $('.whatsapp-link').on('click', function() {
-    $(this).css({ background: '#128C7E', borderColor: '#128C7E' }).html('<i class="bi bi-check"></i> Envoyé');
+    const $links = $('.row-wa-link');
+    if ($links.length === 0) return;
+    if (confirm(`Ouvrir ${$links.length} fenêtres WhatsApp ?`)) {
+      $links.each(function (i, el) {
+        setTimeout(function () {
+          window.open($(el).attr('href'), '_blank');
+        }, i * 800);
+      });
+    }
   });
 });
 </script>

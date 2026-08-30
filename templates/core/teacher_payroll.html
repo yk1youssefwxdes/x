@@ -137,7 +137,7 @@
 
             <div>
               <label class="pr-form-label">Professeur</label>
-              <select name="teacher_id" class="pr-form-input" required id="teacherSelect">
+              <select name="teacher_id" class="pr-form-input" required id="teacherSelect" autofocus>
                 <option value="">— Sélectionner —</option>
                 {% for t in teacher_qs %}
                   <option value="{{ t.id }}" {% if result and result.teacher.id == t.id %}selected{% endif %}>
@@ -169,7 +169,7 @@
               }
             </script>
 
-            <button type="submit" class="btn btn-primary w-100">
+            <button type="submit" class="btn btn-primary w-100" style="min-height:48px;font-size:15px;font-weight:700;">
               <i class="bi bi-cpu"></i> Calculer la rémunération
             </button>
           </form>
