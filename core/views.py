@@ -6110,8 +6110,6 @@ def admin_reset_data(request):
             'ScheduleLock': ScheduleLock.objects.all().delete()[0],
             'CourseGroup': CourseGroup.objects.all().delete()[0],
             'Student': Student.objects.all().delete()[0],
-            'Level': Level.objects.all().delete()[0],
-            'LevelCategory': LevelCategory.objects.all().delete()[0],
             'Teacher': Teacher.objects.all().delete()[0],
             'Room': Room.objects.all().delete()[0],
         }
