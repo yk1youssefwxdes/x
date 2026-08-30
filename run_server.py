@@ -49,29 +49,78 @@ def get_runtime_dir() -> str:
 def get_python_executable() -> str:
     """
     Locate Python executable.
-    1. Bundled private runtime: runtime/python/python.exe (Win) or runtime/python/bin/python (Linux)
-    2. Local venv/ or .venv/
-    3. sys.executable
+
+    Windows:
+    - Use pythonw.exe when this application is already running without a console.
+    - Otherwise use python.exe.
+
+    Priority:
+    1. Bundled private runtime
+    2. Local venv / .venv
+    3. Current Python executable
     """
     runtime_dir = get_runtime_dir()
+
     if sys.platform == "win32":
-        bundled = os.path.join(runtime_dir, "python", "python.exe")
+        # If run_server.py was started with pythonw.exe,
+        # always keep the application on pythonw.exe.
+        running_without_console = (
+            os.path.basename(sys.executable).lower() == "pythonw.exe"
+        )
+
+        if running_without_console:
+            bundled = os.path.join(
+                runtime_dir,
+                "python",
+                "pythonw.exe",
+            )
+        else:
+            bundled = os.path.join(
+                runtime_dir,
+                "python",
+                "python.exe",
+            )
     else:
-        bundled = os.path.join(runtime_dir, "python", "bin", "python")
+        bundled = os.path.join(
+            runtime_dir,
+            "python",
+            "bin",
+            "python",
+        )
 
     if os.path.isfile(bundled):
         return bundled
 
     base_dir = _get_base_dir()
+
     for candidate in ("venv", ".venv"):
         vpath = os.path.join(base_dir, candidate)
-        if os.path.isdir(vpath):
-            if sys.platform == "win32":
-                vpy = os.path.join(vpath, "Scripts", "python.exe")
+
+        if not os.path.isdir(vpath):
+            continue
+
+        if sys.platform == "win32":
+            if os.path.basename(sys.executable).lower() == "pythonw.exe":
+                vpy = os.path.join(
+                    vpath,
+                    "Scripts",
+                    "pythonw.exe",
+                )
             else:
-                vpy = os.path.join(vpath, "bin", "python")
-            if os.path.isfile(vpy):
-                return vpy
+                vpy = os.path.join(
+                    vpath,
+                    "Scripts",
+                    "python.exe",
+                )
+        else:
+            vpy = os.path.join(
+                vpath,
+                "bin",
+                "python",
+            )
+
+        if os.path.isfile(vpy):
+            return vpy
 
     return sys.executable
 
@@ -307,22 +356,44 @@ def _save_local_config(config):
 
 def _relaunch_in_venv_if_needed():
     """
-    If running in development as a plain script, re-exec using discovered Python runtime.
+    If running in development as a plain script, re-exec using the
+    discovered Python runtime without switching a GUI process to python.exe.
     """
     if getattr(sys, "frozen", False) or "nuitka" in sys.modules:
         return
 
     py_exe = get_python_executable()
+
+    current_exe = os.path.normcase(os.path.abspath(sys.executable))
+    target_exe = os.path.normcase(os.path.abspath(py_exe))
+
+    if current_exe == target_exe:
+        return
+
     try:
         if os.path.samefile(sys.executable, py_exe):
             return
-    except OSError:
-        if os.path.normcase(os.path.abspath(sys.executable)) == os.path.normcase(
-            os.path.abspath(py_exe)
-        ):
-            return
+    except (OSError, FileNotFoundError):
+        pass
 
-    sys.exit(subprocess.run([py_exe] + sys.argv).returncode)
+    # Preserve the GUI interpreter.
+    # If we started with pythonw.exe, never relaunch with python.exe.
+    if (
+        sys.platform == "win32"
+        and os.path.basename(sys.executable).lower() == "pythonw.exe"
+        and os.path.basename(py_exe).lower() != "pythonw.exe"
+    ):
+        return
+
+    subprocess.Popen(
+        [py_exe] + sys.argv,
+        cwd=_get_base_dir(),
+        creationflags=subprocess.CREATE_NO_WINDOW
+        if sys.platform == "win32"
+        else 0,
+    )
+
+    sys.exit(0)
 
 
 _relaunch_in_venv_if_needed()
