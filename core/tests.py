@@ -1023,6 +1023,41 @@ class SimplifiedWorkflowsTestCase(TestCase):
         self.assertRedirects(response, next_url)
         self.assertTrue(Enrollment.objects.filter(student=self.student, course_group=self.group).exists())
 
+    def test_teacher_payroll_calculate_and_save_payment(self):
+        today = timezone.now().date()
+        month_str = f"{today.year}-{today.month:02d}"
+        
+        # Test GET payroll page
+        response = self.client.get(reverse('core:teacher_payroll'))
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('months_list', response.context)
+        self.assertIn('teacher_qs', response.context)
+        
+        # Test POST calculate
+        response = self.client.post(reverse('core:teacher_payroll'), {
+            'action': 'calculate',
+            'teacher_id': self.teacher.id,
+            'month': month_str
+        })
+        self.assertEqual(response.status_code, 200)
+        self.assertIsNotNone(response.context['result'])
+        self.assertEqual(response.context['result']['teacher'], self.teacher)
+        
+        # Test POST save payment
+        response = self.client.post(reverse('core:teacher_payroll'), {
+            'action': 'save_payment',
+            'teacher_id': self.teacher.id,
+            'month': month_str,
+            'amount': '1500',
+            'payment_date': today.strftime('%Y-%m-%d'),
+            'payment_method': 'CASH',
+            'payment_type': 'SALARY',
+            'notes': 'Règlement du mois'
+        })
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context['result']['total_paid'], Decimal('1500.00'))
+
+
 
 
 
