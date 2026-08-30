@@ -1,5 +1,5 @@
 {% extends 'core/base.html' %}
-{% block title %}Calcul de paie — {{ SCHOOL_NAME }}{% endblock %}
+{% block title %}Paie des professeurs — {{ SCHOOL_NAME }}{% endblock %}
 
 {% block breadcrumb %}
   <span class="context-bar-sep">›</span>
@@ -7,552 +7,376 @@
 {% endblock %}
 
 {% block content %}
+<div class="teacher-payroll-page pb-5">
 
-<style>
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
-
-.pr-page { font-family:'Inter',system-ui,sans-serif; display:flex; flex-direction:column; gap:1.5rem; padding:.25rem 0 3rem; }
-
-/* ── Hero ── */
-.pr-hero {
-  position:relative; border-radius:20px; padding:2rem 2.5rem; overflow:hidden;
-  background:linear-gradient(135deg,#0f3460 0%,#16213e 40%,#0f3460 100%);
-  color:#fff; display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:1rem;
-}
-.pr-hero::after {
-  content:''; position:absolute; top:-60px; right:-60px; width:220px; height:220px;
-  border-radius:50%; background:rgba(255,255,255,.04); pointer-events:none;
-}
-.pr-hero-title { font-size:1.65rem; font-weight:900; letter-spacing:-.03em; margin:0; }
-.pr-hero-sub { font-size:.82rem; color:rgba(255,255,255,.55); margin:.3rem 0 0; }
-.pr-hero-actions { display:flex; gap:.5rem; flex-wrap:wrap; position:relative; z-index:2; }
-.pr-btn { display:inline-flex; align-items:center; gap:.4rem; padding:.5rem 1.1rem; border-radius:10px; font-size:.78rem; font-weight:700; text-decoration:none; cursor:pointer; border:none; transition:all .15s; }
-.pr-btn-primary { background:#10b981; color:#fff; }
-.pr-btn-primary:hover { background:#059669; color:#fff; }
-.pr-btn-outline { background:rgba(255,255,255,.12); color:#fff; border:1px solid rgba(255,255,255,.2); }
-.pr-btn-outline:hover { background:rgba(255,255,255,.22); color:#fff; }
-.pr-btn-danger { background:#ef4444; color:#fff; }
-.pr-btn-danger:hover { background:#dc2626; color:#fff; }
-
-/* ── Cards ── */
-.pr-card { background:var(--surface,#fff); border-radius:18px; border:1px solid rgba(0,0,0,.07); box-shadow:0 4px 20px rgba(0,0,0,.05); overflow:hidden; }
-.dark .pr-card { background:#1e293b; border-color:rgba(255,255,255,.06); }
-.pr-card-header { display:flex; align-items:center; justify-content:space-between; padding:1.1rem 1.4rem; border-bottom:1px solid rgba(0,0,0,.07); }
-.dark .pr-card-header { border-bottom-color:rgba(255,255,255,.06); }
-.pr-card-title { font-size:.88rem; font-weight:800; letter-spacing:-.01em; display:flex; align-items:center; gap:.4rem; }
-.pr-card-body { padding:1.4rem; }
-
-/* ── KPI row ── */
-.pr-kpi-row { display:grid; grid-template-columns:repeat(4,1fr); gap:1rem; }
-.pr-kpi { background:var(--surface); border-radius:14px; border:1px solid rgba(0,0,0,.07); padding:1rem 1.2rem; display:flex; flex-direction:column; gap:.3rem; box-shadow:0 2px 10px rgba(0,0,0,.04); transition:transform .2s; }
-.pr-kpi:hover { transform:translateY(-2px); }
-.dark .pr-kpi { background:#1e293b; border-color:rgba(255,255,255,.06); }
-.pr-kpi-label { font-size:.65rem; font-weight:700; text-transform:uppercase; letter-spacing:.1em; color:#94a3b8; }
-.pr-kpi-value { font-size:1.5rem; font-weight:900; letter-spacing:-.04em; }
-
-/* ── Balance block ── */
-.pr-balance { border-radius:16px; padding:1.5rem 1.75rem; display:grid; grid-template-columns:repeat(3,1fr); gap:1rem; }
-.pr-balance-item { display:flex; flex-direction:column; gap:.25rem; }
-.pr-balance-lbl { font-size:.65rem; font-weight:700; text-transform:uppercase; letter-spacing:.1em; opacity:.65; }
-.pr-balance-val { font-size:1.45rem; font-weight:900; }
-.pr-bal-positive { background:linear-gradient(135deg,#d1fae5,#a7f3d0); border:1px solid #6ee7b7; color:#064e3b; }
-.pr-bal-negative { background:linear-gradient(135deg,#fee2e2,#fecaca); border:1px solid #fca5a5; color:#7f1d1d; }
-
-/* ── Table ── */
-.pr-table { width:100%; border-collapse:collapse; font-size:.82rem; }
-.pr-table th { font-size:.65rem; font-weight:700; text-transform:uppercase; letter-spacing:.08em; color:#94a3b8; padding:.6rem 1rem; border-bottom:1px solid rgba(0,0,0,.07); text-align:left; }
-.pr-table td { padding:.7rem 1rem; border-bottom:1px solid rgba(0,0,0,.05); color:#334155; vertical-align:middle; }
-.dark .pr-table th { border-bottom-color:rgba(255,255,255,.06); }
-.dark .pr-table td { border-bottom-color:rgba(255,255,255,.04); color:#cbd5e1; }
-.pr-table tr:last-child td { border-bottom:none; }
-.pr-table tr:hover td { background:rgba(0,0,0,.02); }
-.dark .pr-table tr:hover td { background:rgba(255,255,255,.02); }
-
-/* ── Badge ── */
-.pr-badge { display:inline-flex; align-items:center; padding:.18rem .65rem; border-radius:99px; font-size:.68rem; font-weight:700; }
-.pr-badge-advance { background:#fef3c7; color:#92400e; }
-.pr-badge-salary { background:#d1fae5; color:#065f46; }
-.pr-badge-adjustment { background:#e0e7ff; color:#3730a3; }
-.pr-badge-cash { background:#f1f5f9; color:#475569; }
-.pr-badge-transfer { background:#dbeafe; color:#1e40af; }
-.pr-badge-check { background:#fce7f3; color:#9d174d; }
-
-/* ── Quick-add form ── */
-.pr-form-grid { display:grid; grid-template-columns:repeat(2,1fr); gap:1rem; }
-.pr-form-label { font-size:.72rem; font-weight:700; text-transform:uppercase; letter-spacing:.07em; color:#94a3b8; margin-bottom:.3rem; display:block; }
-.pr-form-input { width:100%; padding:.5rem .8rem; border:1px solid #e2e8f0; border-radius:10px; font-size:.85rem; font-family:inherit; outline:none; background:var(--surface); color:inherit; transition:border-color .15s; }
-.pr-form-input:focus { border-color:#0f3460; box-shadow:0 0 0 3px rgba(15,52,96,.12); }
-.dark .pr-form-input { background:#0f172a; border-color:rgba(255,255,255,.1); color:#f1f5f9; }
-.pr-form-col-full { grid-column:1/-1; }
-
-/* ── Empty state ── */
-.pr-empty { display:flex; flex-direction:column; align-items:center; justify-content:center; padding:3rem 1rem; gap:.75rem; color:#94a3b8; }
-.pr-empty-icon { font-size:2.5rem; }
-.pr-empty-title { font-size:.95rem; font-weight:700; }
-
-/* ── Section header ── */
-.pr-section-hdr { display:flex; align-items:center; gap:.5rem; font-size:.8rem; font-weight:700; text-transform:uppercase; letter-spacing:.08em; color:#94a3b8; padding-bottom:.6rem; border-bottom:1px solid rgba(0,0,0,.07); margin-bottom:1rem; }
-.dark .pr-section-hdr { border-bottom-color:rgba(255,255,255,.06); }
-
-/* ── Layout ── */
-.pr-grid { display:grid; grid-template-columns:340px 1fr; gap:1.5rem; align-items:start; }
-@media(max-width:1100px){ .pr-grid { grid-template-columns:1fr; } }
-@media(max-width:768px){ .pr-kpi-row { grid-template-columns:repeat(2,1fr); } .pr-form-grid { grid-template-columns:1fr; } .pr-balance { grid-template-columns:1fr; } }
-@media(max-width:480px){ .pr-kpi-row { grid-template-columns:1fr; } }
-</style>
-
-<div class="pr-page">
-
-  <!-- HERO -->
-  <div class="pr-hero">
+  <!-- Header -->
+  <div class="page-header d-flex align-items-center justify-content-between flex-wrap gap-3 mb-4">
     <div>
-      <h1 class="pr-hero-title"><i class="bi bi-calculator-fill me-2"></i>Calcul de paie</h1>
-      <p class="pr-hero-sub">Calculateur dynamique de rémunération · Suivi des avances · Gestion des soldes</p>
+      <h1 class="page-title d-flex align-items-center gap-2 mb-1">
+        <i class="bi bi-calculator-fill text-primary"></i> Paie des professeurs
+      </h1>
+      <p class="page-subtitle text-muted mb-0">
+        Sélectionnez un professeur et un mois pour calculer sa rémunération.
+      </p>
     </div>
-    <div class="pr-hero-actions">
-      {% if result %}
-        <a href="{% url 'core:export_teacher_payslip_pdf' %}?teacher_id={{ result.teacher.id }}&start_date={{ request.POST.start_date }}&end_date={{ request.POST.end_date }}"
-           class="pr-btn pr-btn-primary" target="_blank">
-          <i class="bi bi-file-earmark-pdf-fill"></i> Télécharger Bulletin PDF
+    {% if result %}
+      <div class="d-flex align-items-center gap-2">
+        <a href="{% url 'core:export_teacher_payslip_pdf' %}?teacher_id={{ result.teacher.id }}&start_date={{ result.start_date_str }}&end_date={{ result.end_date_str }}"
+           class="btn btn-outline-primary btn-sm" target="_blank">
+          <i class="bi bi-file-earmark-pdf-fill me-1"></i> Bulletin de paie (PDF)
         </a>
-      {% endif %}
+        <button type="button" class="btn btn-success btn-sm" data-bs-toggle="modal" data-bs-target="#addPaymentModal">
+          <i class="bi bi-plus-circle-fill me-1"></i> Enregistrer un versement
+        </button>
+      </div>
+    {% endif %}
+  </div>
+
+  <!-- Messages -->
+  {% if messages %}
+    {% for message in messages %}
+      <div class="alert alert-{{ message.tags|default:'info' }} alert-dismissible fade show d-flex align-items-center gap-2 mb-4" role="alert">
+        <i class="bi bi-{% if message.tags == 'success' %}check-circle-fill text-success{% elif message.tags == 'error' %}exclamation-triangle-fill text-danger{% else %}info-circle-fill text-info{% endif %}"></i>
+        <div>{{ message }}</div>
+        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+      </div>
+    {% endfor %}
+  {% endif %}
+
+  <!-- ── 1. SELECTOR CARD ───────────────────────────────────────────── -->
+  <div class="card border-0 shadow-sm rounded-3 mb-4">
+    <div class="card-body p-4">
+      <form method="post" class="row g-3 align-items-end" id="payrollFilterForm">
+        {% csrf_token %}
+        <input type="hidden" name="action" value="calculate">
+
+        <!-- Teacher select -->
+        <div class="col-md-5">
+          <label for="teacherSelect" class="form-label fw-bold text-dark mb-1">
+            <i class="bi bi-person-badge text-primary me-1"></i> Professeur
+          </label>
+          <select name="teacher_id" id="teacherSelect" class="form-select form-select-lg" required>
+            <option value="">-- Choisir un professeur --</option>
+            {% for t in teacher_qs %}
+              <option value="{{ t.id }}" {% if selected_teacher_id == t.id|stringformat:"s" %}selected{% endif %}>
+                {{ t.name }}
+                ({% if t.payment_method == 'PERCENTAGE' %}{{ t.payment_percentage|floatformat:0 }}%{% elif t.payment_method == 'SESSION' %}{{ t.session_rate|floatformat:0 }} DH/séance{% else %}{{ t.hourly_rate|floatformat:0 }} DH/heure{% endif %})
+              </option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <!-- Month select -->
+        <div class="col-md-4">
+          <label for="monthSelect" class="form-label fw-bold text-dark mb-1">
+            <i class="bi bi-calendar-month text-primary me-1"></i> Mois
+          </label>
+          <select name="month" id="monthSelect" class="form-select form-select-lg" required>
+            {% for m in months_list %}
+              <option value="{{ m.value }}" {% if selected_month == m.value %}selected{% endif %}>
+                {{ m.label }}
+              </option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <!-- Submit button -->
+        <div class="col-md-3">
+          <button type="submit" class="btn btn-primary btn-lg w-100 fw-bold d-flex align-items-center justify-content-center gap-2">
+            <i class="bi bi-cpu-fill"></i> Calculer
+          </button>
+        </div>
+      </form>
     </div>
   </div>
 
-  <!-- MAIN GRID: FORM + RESULTS -->
-  <div class="pr-grid">
-
-    <!-- LEFT: Form + Quick-Add -->
-    <div style="display:flex; flex-direction:column; gap:1.25rem;">
-
-      <!-- Calculation Form -->
-      <div class="pr-card">
-        <div class="pr-card-header">
-          <span class="pr-card-title"><i class="bi bi-sliders" style="color:var(--primary);"></i>Paramètres du calcul</span>
+  <!-- ── 2. CALCULATION RESULTS ──────────────────────────────────────── -->
+  {% if result %}
+    
+    <!-- Summary Header & KPIs -->
+    <div class="card border-0 shadow-sm rounded-3 mb-4 overflow-hidden">
+      <div class="card-header bg-white py-3 px-4 d-flex align-items-center justify-content-between flex-wrap gap-2 border-bottom">
+        <div class="d-flex align-items-center gap-3">
+          <div style="width:44px;height:44px;border-radius:12px;background:var(--primary-light,#ede9fe);color:var(--primary,#6366f1);display:flex;align-items:center;justify-content:center;font-size:20px;font-weight:bold;">
+            {{ result.teacher.name|slice:":1"|upper }}
+          </div>
+          <div>
+            <h5 class="fw-bold text-dark mb-0">{{ result.teacher.name }}</h5>
+            <small class="text-muted">
+              Période : <strong>{{ result.month_label }}</strong> (du {{ result.start_date_str }} au {{ result.end_date_str }})
+            </small>
+          </div>
         </div>
-        <div class="pr-card-body">
-          <form method="post" class="d-flex flex-column gap-3" id="calcForm">
-            {% csrf_token %}
-            <input type="hidden" name="action" value="calculate">
 
-            <div>
-              <label class="pr-form-label">Professeur</label>
-              <select name="teacher_id" class="pr-form-input" required id="teacherSelect" autofocus>
-                <option value="">— Sélectionner —</option>
-                {% for t in teacher_qs %}
-                  <option value="{{ t.id }}" {% if result and result.teacher.id == t.id %}selected{% endif %}>
-                    {{ t.name }}
-                    ({% if t.payment_method == 'PERCENTAGE' %}{{ t.payment_percentage|floatformat:0 }}%{% elif t.payment_method == 'SESSION' %}{{ t.session_rate|floatformat:0 }} DH/sess{% else %}{{ t.hourly_rate|floatformat:0 }} DH/h{% endif %})
-                  </option>
-                {% endfor %}
-              </select>
+        <span class="badge rounded-pill px-3 py-2 bg-light text-dark border">
+          <i class="bi bi-info-circle me-1 text-primary"></i>
+          Mode : <strong>{{ result.teacher.get_payment_method_display }}</strong>
+          ({% if result.teacher.payment_method == 'PERCENTAGE' %}{{ result.teacher.payment_percentage|floatformat:0 }}% des recettes
+          {% elif result.teacher.payment_method == 'SESSION' %}{{ result.teacher.session_rate|floatformat:0 }} DH / séance
+          {% else %}{{ result.teacher.hourly_rate|floatformat:0 }} DH / heure{% endif %})
+        </span>
+      </div>
+
+      <!-- 3 Key Numbers Grid -->
+      <div class="card-body p-4 bg-light-subtle">
+        <div class="row g-3">
+          
+          <!-- 1. Total Calculated Salary -->
+          <div class="col-md-4">
+            <div class="p-3 rounded-3 bg-white border shadow-2xs h-100">
+              <div class="text-muted small fw-bold text-uppercase mb-1">Rémunération calculée</div>
+              <div class="fs-2 fw-bolder text-primary mb-1">
+                {{ result.salary_taught|floatformat:0 }} <span class="fs-6 fw-normal text-muted">DH</span>
+              </div>
+              <div class="small text-muted">
+                <i class="bi bi-clock-history me-1"></i>
+                {% if result.teacher.payment_method == 'PERCENTAGE' %}
+                  Recettes totales : <strong>{{ result.total_revenue|floatformat:0 }} DH</strong>
+                {% else %}
+                  <strong>{{ result.total_sessions_taught }}</strong> séance{{ result.total_sessions_taught|pluralize }} • <strong>{{ result.total_hours|floatformat:1 }}h</strong> de cours
+                {% endif %}
+              </div>
             </div>
+          </div>
 
-            <div>
-              <label class="pr-form-label">Date de début</label>
-              <input type="date" name="start_date" class="pr-form-input" id="startDate" value="{{ request.POST.start_date }}" required>
+          <!-- 2. Already Paid -->
+          <div class="col-md-4">
+            <div class="p-3 rounded-3 bg-white border shadow-2xs h-100">
+              <div class="text-muted small fw-bold text-uppercase mb-1">Déjà versé (ce mois)</div>
+              <div class="fs-2 fw-bolder text-success mb-1">
+                {{ result.total_paid|floatformat:0 }} <span class="fs-6 fw-normal text-muted">DH</span>
+              </div>
+              <div class="small text-muted">
+                <i class="bi bi-receipt me-1"></i>
+                <strong>{{ result.logged_payments|length }}</strong> versement{{ result.logged_payments|length|pluralize }} enregistré{{ result.logged_payments|length|pluralize }}
+              </div>
             </div>
-            <div>
-              <label class="pr-form-label">Date de fin</label>
-              <input type="date" name="end_date" class="pr-form-input" id="endDate" value="{{ request.POST.end_date }}" required>
+          </div>
+
+          <!-- 3. Remaining Balance -->
+          <div class="col-md-4">
+            <div class="p-3 rounded-3 bg-white border shadow-2xs h-100" style="border-left: 4px solid {% if result.balance > 0 %}#f59e0b{% else %}#10b981{% endif %} !important;">
+              <div class="text-muted small fw-bold text-uppercase mb-1">Reste à payer</div>
+              <div class="fs-2 fw-bolder {% if result.balance > 0 %}text-warning-emphasis{% else %}text-success{% endif %} mb-1">
+                {{ result.balance|floatformat:0 }} <span class="fs-6 fw-normal text-muted">DH</span>
+              </div>
+              <div class="small {% if result.balance > 0 %}text-warning-emphasis{% else %}text-success{% endif %}">
+                {% if result.balance > 0 %}
+                  <i class="bi bi-exclamation-circle-fill me-1"></i> Solde en attente de versement
+                {% else %}
+                  <i class="bi bi-check-circle-fill me-1"></i> Rémunération entièrement réglée
+                {% endif %}
+              </div>
             </div>
+          </div>
 
-            <script>
-              const si = document.getElementById('startDate');
-              const ei = document.getElementById('endDate');
-              if (!si.value) {
-                const now = new Date();
-                const first = new Date(now.getFullYear(), now.getMonth(), 1);
-                const last  = new Date(now.getFullYear(), now.getMonth()+1, 0);
-                si.value = first.toISOString().split('T')[0];
-                ei.value = last.toISOString().split('T')[0];
-              }
-            </script>
+        </div>
+      </div>
+    </div>
 
-            <button type="submit" class="btn btn-primary w-100" style="min-height:48px;font-size:15px;font-weight:700;">
-              <i class="bi bi-cpu"></i> Calculer la rémunération
+    <!-- ── 3. DETAILS TABS ────────────────────────────────────────────── -->
+    <div class="row g-4">
+      
+      <!-- Payments history for this period -->
+      <div class="col-lg-6">
+        <div class="card border-0 shadow-sm rounded-3 h-100">
+          <div class="card-header bg-white py-3 d-flex align-items-center justify-content-between border-bottom">
+            <h6 class="fw-bold text-dark mb-0 d-flex align-items-center gap-2">
+              <i class="bi bi-cash-stack text-success"></i> Versements effectués ({{ result.logged_payments|length }})
+            </h6>
+            <button type="button" class="btn btn-sm btn-outline-success" data-bs-toggle="modal" data-bs-target="#addPaymentModal">
+              <i class="bi bi-plus-lg me-1"></i> Ajouter
             </button>
-          </form>
+          </div>
+          <div class="card-body p-0">
+            {% if result.logged_payments %}
+              <div class="table-responsive">
+                <table class="table table-hover align-middle mb-0">
+                  <thead class="table-light">
+                    <tr>
+                      <th>Date</th>
+                      <th>Type</th>
+                      <th>Mode</th>
+                      <th class="text-end">Montant</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {% for pay in result.logged_payments %}
+                      <tr>
+                        <td>
+                          <strong>{{ pay.payment_date|date:"d/m/Y" }}</strong>
+                          {% if pay.notes %}
+                            <small class="text-muted d-block">{{ pay.notes }}</small>
+                          {% endif %}
+                        </td>
+                        <td>
+                          <span class="badge {% if pay.payment_type == 'SALARY' %}bg-success-subtle text-success{% else %}bg-warning-subtle text-warning-emphasis{% endif %}">
+                            {{ pay.get_payment_type_display }}
+                          </span>
+                        </td>
+                        <td><small class="text-muted">{{ pay.get_payment_method_display }}</small></td>
+                        <td class="text-end fw-bold text-success">{{ pay.amount|floatformat:0 }} DH</td>
+                      </tr>
+                    {% endfor %}
+                  </tbody>
+                  <tfoot class="table-light">
+                    <tr>
+                      <th colspan="3" class="text-end">Total versé :</th>
+                      <th class="text-end fw-bold text-success">{{ result.total_paid|floatformat:0 }} DH</th>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+            {% else %}
+              <div class="text-center py-5 text-muted">
+                <i class="bi bi-wallet2 fs-2 mb-2 d-block text-muted"></i>
+                <p class="mb-2">Aucun versement enregistré pour {{ result.month_label }}.</p>
+                <button type="button" class="btn btn-sm btn-success" data-bs-toggle="modal" data-bs-target="#addPaymentModal">
+                  <i class="bi bi-plus-circle me-1"></i> Enregistrer le premier versement
+                </button>
+              </div>
+            {% endif %}
+          </div>
         </div>
       </div>
 
-      <!-- Quick-Add Payment Form (only shown after calculation) -->
-      {% if result %}
-      <div class="pr-card" style="border-top:3px solid #10b981;">
-        <div class="pr-card-header">
-          <span class="pr-card-title"><i class="bi bi-plus-circle-fill" style="color:#10b981;"></i>Enregistrer un paiement</span>
+      <!-- Completed sessions details -->
+      <div class="col-lg-6">
+        <div class="card border-0 shadow-sm rounded-3 h-100">
+          <div class="card-header bg-white py-3 border-bottom">
+            <h6 class="fw-bold text-dark mb-0 d-flex align-items-center gap-2">
+              <i class="bi bi-calendar-check text-primary"></i> Séances réalisées ({{ result.sessions|length }})
+            </h6>
+          </div>
+          <div class="card-body p-0">
+            {% if result.sessions %}
+              <div class="table-responsive" style="max-height: 380px; overflow-y: auto;">
+                <table class="table table-hover align-middle mb-0">
+                  <thead class="table-light sticky-top">
+                    <tr>
+                      <th>Date</th>
+                      <th>Groupe</th>
+                      <th>Horaire</th>
+                      <th class="text-end">Durée</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {% for item in result.sessions %}
+                      <tr>
+                        <td><strong>{{ item.session.date|date:"d/m/Y" }}</strong></td>
+                        <td>
+                          <a href="{% url 'core:group_detail' item.session.group.id %}" class="text-decoration-none text-dark fw-semibold">
+                            {{ item.session.group.name }}
+                          </a>
+                        </td>
+                        <td><small class="text-muted">{{ item.session.start_time|time:"H:i" }} – {{ item.session.end_time|time:"H:i" }}</small></td>
+                        <td class="text-end"><span class="badge bg-light text-dark border">{{ item.hours|floatformat:1 }}h</span></td>
+                      </tr>
+                    {% endfor %}
+                  </tbody>
+                </table>
+              </div>
+            {% else %}
+              <div class="text-center py-5 text-muted">
+                <i class="bi bi-calendar-x fs-2 mb-2 d-block text-muted"></i>
+                <p class="mb-0">Aucune séance terminée trouvée pour ce professeur sur ce mois.</p>
+              </div>
+            {% endif %}
+          </div>
         </div>
-        <div class="pr-card-body">
-          <form method="post" id="payForm">
+      </div>
+
+    </div>
+
+    <!-- ── 4. RECORD PAYMENT MODAL ────────────────────────────────────── -->
+    <div class="modal fade" id="addPaymentModal" tabindex="-1" aria-labelledby="addPaymentModalLabel" aria-hidden="true">
+      <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-0 shadow">
+          <form method="post" id="savePaymentForm">
             {% csrf_token %}
             <input type="hidden" name="action" value="save_payment">
             <input type="hidden" name="teacher_id" value="{{ result.teacher.id }}">
-            <input type="hidden" name="start_date" value="{{ request.POST.start_date }}">
-            <input type="hidden" name="end_date" value="{{ request.POST.end_date }}">
+            <input type="hidden" name="month" value="{{ result.month_str }}">
 
-            <div class="pr-form-grid" style="margin-bottom:.9rem;">
-              <div>
-                <label class="pr-form-label">Montant (DH)</label>
-                <input type="number" name="amount" class="pr-form-input" step="0.01" min="0.01"
-                  placeholder="Ex: 1500.00" required>
+            <div class="modal-header bg-success text-white">
+              <h5 class="modal-title fw-bold" id="addPaymentModalLabel">
+                <i class="bi bi-cash-coin me-2"></i> Enregistrer un versement
+              </h5>
+              <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Fermer"></button>
+            </div>
+
+            <div class="modal-body p-4">
+              <div class="alert alert-light border d-flex align-items-center gap-2 mb-3">
+                <i class="bi bi-person-check text-success fs-5"></i>
+                <div>
+                  <strong>{{ result.teacher.name }}</strong> • Période : <strong>{{ result.month_label }}</strong>
+                  <div class="small text-muted">Reste dû : <strong>{{ result.balance|floatformat:0 }} DH</strong></div>
+                </div>
               </div>
-              <div>
-                <label class="pr-form-label">Date du versement</label>
-                <input type="date" name="payment_date" class="pr-form-input" id="payDate">
-                <script>document.getElementById('payDate').value = new Date().toISOString().split('T')[0];</script>
+
+              <!-- Amount -->
+              <div class="mb-3">
+                <label for="payAmount" class="form-label fw-bold">Montant versé (DH) :</label>
+                <div class="input-group">
+                  <input type="number" name="amount" id="payAmount" class="form-control form-control-lg fw-bold"
+                         step="1" min="1" placeholder="0" value="{% if result.balance > 0 %}{{ result.balance|floatformat:0 }}{% endif %}" required autofocus>
+                  <span class="input-group-text fw-bold">DH</span>
+                </div>
               </div>
-              <div>
-                <label class="pr-form-label">Type</label>
-                <select name="payment_type" class="pr-form-input">
-                  <option value="ADVANCE">Avance / Acompte</option>
+
+              <!-- Date & Method -->
+              <div class="row g-2 mb-3">
+                <div class="col-md-6">
+                  <label for="payDate" class="form-label small fw-semibold">Date de versement :</label>
+                  <input type="date" name="payment_date" id="payDate" class="form-control" value="{% now 'Y-m-d' %}">
+                </div>
+                <div class="col-md-6">
+                  <label for="payMethod" class="form-label small fw-semibold">Mode de règlement :</label>
+                  <select name="payment_method" id="payMethod" class="form-select">
+                    <option value="CASH" selected>Espèces</option>
+                    <option value="TRANSFER">Virement bancaire</option>
+                    <option value="CHECK">Chèque</option>
+                  </select>
+                </div>
+              </div>
+
+              <!-- Type & Notes -->
+              <div class="mb-3">
+                <label for="payType" class="form-label small fw-semibold">Type de versement :</label>
+                <select name="payment_type" id="payType" class="form-select">
                   <option value="SALARY" selected>Règlement de salaire</option>
+                  <option value="ADVANCE">Avance / Acompte</option>
                   <option value="ADJUSTMENT">Régularisation</option>
                 </select>
               </div>
-              <div>
-                <label class="pr-form-label">Mode de paiement</label>
-                <select name="payment_method" class="pr-form-input">
-                  <option value="CASH" selected>Espèces</option>
-                  <option value="TRANSFER">Virement</option>
-                  <option value="CHECK">Chèque</option>
-                </select>
-              </div>
-              <div>
-                <label class="pr-form-label">Mois de la période</label>
-                <select name="period_month" class="pr-form-input" id="periMonth">
-                  {% for m in "123456789101112"|make_list %}{% endfor %}
-                  <option value="1">Janvier</option><option value="2">Février</option>
-                  <option value="3">Mars</option><option value="4">Avril</option>
-                  <option value="5">Mai</option><option value="6">Juin</option>
-                  <option value="7">Juillet</option><option value="8">Août</option>
-                  <option value="9">Septembre</option><option value="10">Octobre</option>
-                  <option value="11">Novembre</option><option value="12">Décembre</option>
-                </select>
-              </div>
-              <div>
-                <label class="pr-form-label">Année</label>
-                <input type="number" name="period_year" class="pr-form-input" id="periYear"
-                  min="2020" max="2100" value="{{ request.POST.start_date|slice:':4' }}">
-              </div>
-              <div class="pr-form-col-full">
-                <label class="pr-form-label">Notes (facultatif)</label>
-                <input type="text" name="notes" class="pr-form-input" placeholder="Ex: Avance du 1er du mois…">
+
+              <div class="mb-0">
+                <label for="payNotes" class="form-label small fw-semibold">Notes / Référence (facultatif) :</label>
+                <input type="text" name="notes" id="payNotes" class="form-control" placeholder="Ex: Virement reçu le 28...">
               </div>
             </div>
 
-            <button type="submit" class="btn btn-success w-100">
-              <i class="bi bi-check2-circle"></i> Enregistrer le paiement
-            </button>
+            <div class="modal-footer bg-light">
+              <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Annuler</button>
+              <button type="submit" class="btn btn-success fw-bold px-4">
+                <i class="bi bi-check-circle-fill me-1"></i> Confirmer le paiement
+              </button>
+            </div>
           </form>
-          <script>
-            // Pre-select month from the selected period start date
-            const sd = document.getElementById('startDate');
-            if (sd && sd.value) {
-              const parts = sd.value.split('-');
-              document.getElementById('periMonth').value = parseInt(parts[1], 10);
-              document.getElementById('periYear').value = parts[0];
-            }
-          </script>
         </div>
       </div>
-      {% endif %}
-
     </div>
 
-    <!-- RIGHT: Results -->
-    <div style="display:flex; flex-direction:column; gap:1.25rem;">
-
-      {% if messages %}
-        {% for message in messages %}
-          <div class="alert alert-{{ message.tags|default:'info' }} d-flex align-items-center gap-2" role="alert" style="border-radius:14px;">
-            <i class="bi bi-{% if message.tags == 'success' %}check-circle-fill{% else %}x-circle-fill{% endif %}"></i>
-            {{ message }}
-          </div>
-        {% endfor %}
-      {% endif %}
-
-      {% if result %}
-
-        <!-- Teacher Info Header -->
-        <div class="pr-card">
-          <div class="pr-card-header">
-            <div class="d-flex align-items-center gap-2">
-              <div style="width:36px;height:36px;border-radius:10px;background:linear-gradient(135deg,#0f3460,#16213e);display:flex;align-items:center;justify-content:center;">
-                <i class="bi bi-person-workspace" style="color:#fff;font-size:16px;"></i>
-              </div>
-              <div>
-                <div style="font-weight:800; font-size:.95rem;">{{ result.teacher.name }}</div>
-                <div style="font-size:.75rem; color:#94a3b8;">
-                  {{ request.POST.start_date }} → {{ request.POST.end_date }}
-                </div>
-              </div>
-            </div>
-            <span class="badge badge-primary" style="font-size:.75rem;">
-              {% if result.payment_method == 'PERCENTAGE' %}Part {{ result.payment_percentage|floatformat:1 }}%
-              {% elif result.payment_method == 'SESSION' %}{{ result.session_rate|floatformat:2 }} DH/session
-              {% else %}{{ result.hourly_rate|floatformat:2 }} DH/h{% endif %}
-            </span>
-          </div>
-        </div>
-
-        <!-- KPI Cards by payment method -->
-        {% if result.payment_method == 'PERCENTAGE' %}
-          <div class="pr-kpi-row">
-            <div class="pr-kpi">
-              <div class="pr-kpi-label">CA Réel Collecté</div>
-              <div class="pr-kpi-value" style="color:var(--primary); font-size:1.2rem;">{{ result.gains_actual|floatformat:0 }} <span style="font-size:.75rem; font-weight:500;">DH</span></div>
-            </div>
-            <div class="pr-kpi">
-              <div class="pr-kpi-label">Part Régulière</div>
-              <div class="pr-kpi-value" style="color:var(--info); font-size:1.2rem;">{{ result.salary_regular|floatformat:0 }} <span style="font-size:.75rem; font-weight:500;">DH</span></div>
-            </div>
-            <div class="pr-kpi">
-              <div class="pr-kpi-label">Part Inscriptions Tardives</div>
-              <div class="pr-kpi-value" style="color:var(--warning); font-size:1.2rem;">{{ result.salary_late|floatformat:0 }} <span style="font-size:.75rem; font-weight:500;">DH</span></div>
-            </div>
-            <div class="pr-kpi" style="border-color:#10b981;">
-              <div class="pr-kpi-label">Gains Calculés (Net)</div>
-              <div class="pr-kpi-value" style="color:#059669; font-size:1.2rem;">{{ result.salary_taught|floatformat:0 }} <span style="font-size:.75rem; font-weight:500;">DH</span></div>
-            </div>
-          </div>
-        {% elif result.payment_method == 'SESSION' %}
-          <div class="pr-kpi-row" style="grid-template-columns:repeat(3,1fr);">
-            <div class="pr-kpi">
-              <div class="pr-kpi-label">Séances Enseignées</div>
-              <div class="pr-kpi-value" style="color:var(--primary);">{{ result.taught_sessions }}</div>
-            </div>
-            <div class="pr-kpi">
-              <div class="pr-kpi-label">Tarif / Session</div>
-              <div class="pr-kpi-value" style="color:var(--info);">{{ result.session_rate|floatformat:0 }} <span style="font-size:.75rem; font-weight:500;">DH</span></div>
-            </div>
-            <div class="pr-kpi" style="border-color:#10b981;">
-              <div class="pr-kpi-label">Gains Calculés</div>
-              <div class="pr-kpi-value" style="color:#059669;">{{ result.salary_taught|floatformat:0 }} <span style="font-size:.75rem; font-weight:500;">DH</span></div>
-            </div>
-          </div>
-        {% else %}
-          <div class="pr-kpi-row" style="grid-template-columns:repeat(3,1fr);">
-            <div class="pr-kpi">
-              <div class="pr-kpi-label">Heures Enseignées</div>
-              <div class="pr-kpi-value" style="color:var(--primary);">{{ result.taught_hours|floatformat:1 }} <span style="font-size:.75rem; font-weight:500;">h</span></div>
-            </div>
-            <div class="pr-kpi">
-              <div class="pr-kpi-label">Taux Horaire</div>
-              <div class="pr-kpi-value" style="color:var(--info);">{{ result.hourly_rate|floatformat:0 }} <span style="font-size:.75rem; font-weight:500;">DH/h</span></div>
-            </div>
-            <div class="pr-kpi" style="border-color:#10b981;">
-              <div class="pr-kpi-label">Gains Calculés</div>
-              <div class="pr-kpi-value" style="color:#059669;">{{ result.salary_taught|floatformat:0 }} <span style="font-size:.75rem; font-weight:500;">DH</span></div>
-            </div>
-          </div>
-        {% endif %}
-
-        <!-- Balance Summary -->
-        <div class="pr-balance {% if result.balance >= 0 %}pr-bal-positive{% else %}pr-bal-negative{% endif %}">
-          <div class="pr-balance-item">
-            <div class="pr-balance-lbl">Gains calculés (Net)</div>
-            <div class="pr-balance-val">{{ result.salary_taught|floatformat:2 }} DH</div>
-          </div>
-          <div class="pr-balance-item">
-            <div class="pr-balance-lbl">Total déjà versé</div>
-            <div class="pr-balance-val">{{ result.total_paid|floatformat:2 }} DH</div>
-          </div>
-          <div class="pr-balance-item">
-            <div class="pr-balance-lbl">
-              {% if result.balance >= 0 %}
-                <i class="bi bi-arrow-down-circle-fill"></i> Reste à payer à l'enseignant
-              {% else %}
-                <i class="bi bi-arrow-up-circle-fill"></i> Trop-perçu (à retenir)
-              {% endif %}
-            </div>
-            <div class="pr-balance-val" style="font-size:1.8rem;">
-              {% if result.balance >= 0 %}{{ result.balance|floatformat:2 }}{% else %}{{ result.balance|floatformat:2 }}{% endif %} DH
-            </div>
-          </div>
-        </div>
-
-        <!-- Payments Logged -->
-        <div class="pr-card">
-          <div class="pr-card-header">
-            <span class="pr-card-title">
-              <i class="bi bi-cash-stack" style="color:#10b981;"></i>Historique des versements ({{ result.logged_payments|length }})
-            </span>
-          </div>
-          <div>
-            {% if result.logged_payments %}
-              <table class="pr-table">
-                <thead><tr>
-                  <th>Date</th>
-                  <th>Type</th>
-                  <th>Mode</th>
-                  <th>Période</th>
-                  <th>Notes</th>
-                  <th class="text-end">Montant</th>
-                </tr></thead>
-                <tbody>
-                  {% for p in result.logged_payments %}
-                  <tr>
-                    <td>{{ p.payment_date|date:"d/m/Y" }}</td>
-                    <td>
-                      {% if p.payment_type == 'ADVANCE' %}
-                        <span class="pr-badge pr-badge-advance"><i class="bi bi-arrow-up-right me-1"></i>Avance</span>
-                      {% elif p.payment_type == 'SALARY' %}
-                        <span class="pr-badge pr-badge-salary"><i class="bi bi-check2 me-1"></i>Salaire</span>
-                      {% else %}
-                        <span class="pr-badge pr-badge-adjustment"><i class="bi bi-sliders me-1"></i>Régularisation</span>
-                      {% endif %}
-                    </td>
-                    <td>
-                      {% if p.payment_method == 'CASH' %}
-                        <span class="pr-badge pr-badge-cash"><i class="bi bi-cash me-1"></i>Espèces</span>
-                      {% elif p.payment_method == 'TRANSFER' %}
-                        <span class="pr-badge pr-badge-transfer"><i class="bi bi-bank me-1"></i>Virement</span>
-                      {% else %}
-                        <span class="pr-badge pr-badge-check"><i class="bi bi-file-earmark-check me-1"></i>Chèque</span>
-                      {% endif %}
-                    </td>
-                    <td style="font-weight:600;">{{ p.period_month|stringformat:"02d" }}/{{ p.period_year }}</td>
-                    <td style="color:#94a3b8; font-size:.8rem;">{{ p.notes|default:"—" }}</td>
-                    <td class="text-end" style="font-weight:800; color:#10b981;">{{ p.amount|floatformat:2 }} DH</td>
-                  </tr>
-                  {% endfor %}
-                </tbody>
-                <tfoot>
-                  <tr style="background:rgba(0,0,0,.02);">
-                    <td colspan="5" style="font-weight:800; font-size:.85rem; padding:.8rem 1rem;">Total versé</td>
-                    <td class="text-end" style="font-weight:900; color:#10b981; font-size:.95rem; padding:.8rem 1rem;">{{ result.total_paid|floatformat:2 }} DH</td>
-                  </tr>
-                </tfoot>
-              </table>
-            {% else %}
-              <div class="pr-empty">
-                <div class="pr-empty-icon"><i class="bi bi-inbox"></i></div>
-                <div class="pr-empty-title">Aucun versement enregistré pour cette période</div>
-                <div style="font-size:.8rem;">Utilisez le formulaire à gauche pour enregistrer une avance ou un règlement.</div>
-              </div>
-            {% endif %}
-          </div>
-        </div>
-
-        <!-- Courses Breakdown (PERCENTAGE only) -->
-        {% if result.payment_method == 'PERCENTAGE' and result.courses_breakdown %}
-          <div class="pr-card">
-            <div class="pr-card-header">
-              <span class="pr-card-title"><i class="bi bi-graph-up-arrow me-1"></i>Détail par groupe ({{ result.courses_breakdown|length }})</span>
-              {% if result.substitute_sessions_count > 0 %}
-                <span class="pr-badge pr-badge-transfer"><i class="bi bi-arrow-left-right me-1"></i>{{ result.substitute_sessions_count }} remplacement(s)</span>
-              {% endif %}
-            </div>
-            <div style="overflow-x:auto;">
-              <table class="pr-table">
-                <thead><tr>
-                  <th>Groupe</th>
-                  <th class="text-center">Élèves</th>
-                  <th class="text-center">Séances<br><small>Ens./Total</small></th>
-                  <th class="text-end">CA Théorique</th>
-                  <th class="text-end">CA Réel</th>
-                  <th class="text-end">Part rég.</th>
-                  <th class="text-end">Part tardive</th>
-                  <th class="text-end" style="color:#059669;">Part nette</th>
-                </tr></thead>
-                <tbody>
-                  {% for item in result.courses_breakdown %}
-                  <tr>
-                    <td>
-                      <strong><a href="{% url 'core:group_detail' item.course.id %}" class="text-decoration-none">{{ item.course.name }}</a></strong>
-                      <br><small style="color:#94a3b8;">{{ item.course.subject }}</small>
-                    </td>
-                    <td class="text-center">{{ item.student_count }}</td>
-                    <td class="text-center">
-                      <span style="font-weight:700;">{{ item.taught_sessions }}</span><span style="color:#94a3b8;">/{{ item.total_sessions }}</span>
-                      {% if item.substituted_sessions > 0 %}
-                        <br><small style="color:#f59e0b;font-size:.7rem;">{{ item.substituted_sessions }} remplacé(s)</small>
-                      {% endif %}
-                    </td>
-                    <td class="text-end">{{ item.gains_theoretical|floatformat:2 }} DH</td>
-                    <td class="text-end" style="color:var(--success);">{{ item.gains_actual|floatformat:2 }} DH</td>
-                    <td class="text-end" style="color:var(--info);">{{ item.share_regular|floatformat:2 }} DH</td>
-                    <td class="text-end" style="color:var(--warning);">{{ item.share_late|floatformat:2 }} DH</td>
-                    <td class="text-end" style="font-weight:800; color:#059669;">{{ item.share_actual|floatformat:2 }} DH</td>
-                  </tr>
-                  {% endfor %}
-                </tbody>
-                <tfoot>
-                  <tr style="background:rgba(0,0,0,.02);">
-                    <td colspan="4" style="font-weight:800; font-size:.85rem; padding:.75rem 1rem;">Total</td>
-                    <td class="text-end fw-bold" style="padding:.75rem 1rem;">{{ result.gains_actual|floatformat:2 }} DH</td>
-                    <td class="text-end fw-bold" style="color:var(--info); padding:.75rem 1rem;">{{ result.salary_regular|floatformat:2 }} DH</td>
-                    <td class="text-end fw-bold" style="color:var(--warning); padding:.75rem 1rem;">{{ result.salary_late|floatformat:2 }} DH</td>
-                    <td class="text-end fw-bold" style="color:#059669; padding:.75rem 1rem;">{{ result.salary_taught|floatformat:2 }} DH</td>
-                  </tr>
-                </tfoot>
-              </table>
-            </div>
-          </div>
-        {% endif %}
-
-        <!-- Sessions list -->
-        <div class="pr-card">
-          <div class="pr-card-header">
-            <span class="pr-card-title"><i class="bi bi-clock-history me-1"></i>Sessions enseignées ({{ result.sessions|length }})</span>
-            {% if result.own_sessions_count > 0 or result.substitute_sessions_count > 0 %}
-            <div style="display:flex; gap:.5rem; font-size:.75rem;">
-              <span class="pr-badge pr-badge-salary">{{ result.own_sessions_count }} propres</span>
-              {% if result.substitute_sessions_count > 0 %}
-                <span class="pr-badge pr-badge-transfer">{{ result.substitute_sessions_count }} rempl.</span>
-              {% endif %}
-            </div>
-            {% endif %}
-          </div>
-          <div style="overflow-x:auto;">
-            <table class="pr-table">
-              <thead><tr>
-                <th>Date</th>
-                <th>Groupe</th>
-                <th>Horaire</th>
-                <th>Salle</th>
-                <th>Rôle</th>
-                <th class="text-end">Heures</th>
-              </tr></thead>
-              <tbody>
-                {% for item in result.sessions %}
-                <tr>
-                  <td>{{ item.session.date|date:"d/m/Y" }}</td>
-                  <td><strong><a href="{% url 'core:group_detail' item.session.group.id %}" class="text-decoration-none">{{ item.session.group.name }}</a></strong></td>
-                  <td><span class="badge badge-secondary">{{ item.session.start_time|time:"H:i" }} – {{ item.session.end_time|time:"H:i" }}</span></td>
-                  <td>{{ item.session.room.name }}</td>
-                  <td>
-                    {% if item.session.substitute_teacher and item.session.substitute_teacher.id == result.teacher.id %}
-                      <span class="pr-badge pr-badge-transfer"><i class="bi bi-arrow-left-right me-1"></i>Remplacement</span>
-                    {% else %}
-                      <span class="pr-badge pr-badge-salary"><i class="bi bi-person-check me-1"></i>Titulaire</span>
-                    {% endif %}
-                  </td>
-                  <td class="text-end fw-bold">{{ item.hours|floatformat:1 }}h</td>
-                </tr>
-                {% empty %}
-                <tr><td colspan="6" class="text-center py-4" style="color:#94a3b8;">Aucune séance validée dans cette période</td></tr>
-                {% endfor %}
-              </tbody>
-            </table>
-          </div>
-        </div>
-
-      {% else %}
-        <!-- Empty state before calculation -->
-        <div class="pr-card">
-          <div class="pr-card-body pr-empty" style="padding:4rem 2rem;">
-            <div style="width:72px;height:72px;border-radius:50%;background:linear-gradient(135deg,#dbeafe,#eff6ff);display:flex;align-items:center;justify-content:center;">
-              <i class="bi bi-calculator" style="font-size:2rem;color:var(--primary);"></i>
-            </div>
-            <div class="pr-empty-title">Résultats ici</div>
-            <div style="font-size:.82rem; text-align:center; max-width:280px;">Sélectionnez un professeur et une période, puis cliquez sur <strong>Calculer la rémunération</strong>.</div>
-          </div>
-        </div>
-      {% endif %}
-
+  {% else %}
+    <!-- Empty state before selection -->
+    <div class="card border-0 shadow-sm rounded-3 py-5 text-center text-muted">
+      <div class="py-4">
+        <i class="bi bi-calculator display-4 text-muted mb-3 d-inline-block"></i>
+        <h5 class="fw-bold text-dark mb-1">Prêt pour le calcul</h5>
+        <p class="text-muted mb-0">Choisissez un professeur et un mois ci-dessus, puis cliquez sur <strong>Calculer</strong>.</p>
+      </div>
     </div>
-  </div>
+  {% endif %}
 
 </div>
 {% endblock %}

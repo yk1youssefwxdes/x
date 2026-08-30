@@ -786,15 +786,15 @@ def session_attendance(request, session_id):
 def teacher_payroll(request):
     """Calculate payroll for a teacher for a selected month."""
     from .models import Teacher, Session, TeacherPayment
-    from .utils import calculate_teacher_hours, get_months_in_range
+    from .utils import calculate_teacher_hours
     from django.db.models import Q
     from django.contrib import messages
+    from datetime import date, datetime
     import calendar
+    
+    teacher_qs = Teacher.objects.filter(is_active=True).order_by('name')
 
-    teacher_qs = Teacher.objects.filter(is_active=True)
-
-    # Build months list for the select (last 18 months)
-    from datetime import date
+    FRENCH_MONTHS = ['', 'Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin', 'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre']
     today = timezone.now().date()
     months_list = []
     for i in range(18):
@@ -803,90 +803,98 @@ def teacher_payroll(request):
         while m <= 0:
             m += 12
             y -= 1
-        months_list.append({'value': f'{y}-{m:02d}', 'label': date(y, m, 1).strftime('%B %Y').capitalize()})
+        months_list.append({
+            'value': f"{y}-{m:02d}",
+            'label': f"{FRENCH_MONTHS[m]} {y}"
+        })
+
+    selected_month = request.POST.get('month') or request.GET.get('month') or f"{today.year}-{today.month:02d}"
+    selected_teacher_id = request.POST.get('teacher_id') or request.GET.get('teacher_id') or ''
 
     result = None
-    selected_month = request.POST.get('month') or request.GET.get('month')
-    selected_teacher_id = request.POST.get('teacher_id') or request.GET.get('teacher_id')
+    if request.method == 'POST' or request.GET.get('teacher_id'):
+        action = request.POST.get('action') or 'calculate'
+        teacher_id = request.POST.get('teacher_id') or request.GET.get('teacher_id')
+        month_str = request.POST.get('month') or request.GET.get('month') or f"{today.year}-{today.month:02d}"
 
-    if request.method == 'POST':
-        action = request.POST.get('action', 'calculate')
-        teacher_id = request.POST.get('teacher_id')
-        month_str = request.POST.get('month')  # e.g. "2026-08"
+        if teacher_id and month_str:
+            teacher = get_object_or_404(Teacher, pk=teacher_id)
+            selected_teacher_id = str(teacher.id)
+            selected_month = month_str
 
-        if not (teacher_id and month_str):
-            messages.error(request, 'Veuillez sélectionner un professeur et un mois.')
-            return render(request, 'core/teacher_payroll.html', {
-                'teacher_qs': teacher_qs, 'result': None, 'months_list': months_list,
-                'selected_month': selected_month, 'selected_teacher_id': selected_teacher_id,
-            })
+            try:
+                year_m, mon_m = int(month_str[:4]), int(month_str[5:7])
+                start_d = date(year_m, mon_m, 1)
+                end_d = date(year_m, mon_m, calendar.monthrange(year_m, mon_m)[1])
+            except (ValueError, IndexError):
+                start_d = date(today.year, today.month, 1)
+                end_d = date(today.year, today.month, calendar.monthrange(today.year, today.month)[1])
+                year_m, mon_m = today.year, today.month
 
-        try:
-            year_m, mon_m = int(month_str[:4]), int(month_str[5:7])
-        except (ValueError, IndexError):
-            messages.error(request, 'Mois invalide.')
-            return redirect('core:teacher_payroll')
+            if action == 'save_payment':
+                amount = request.POST.get('amount')
+                pay_date_str = request.POST.get('payment_date')
+                method = request.POST.get('payment_method', 'CASH')
+                pay_type = request.POST.get('payment_type', 'SALARY')
+                notes = request.POST.get('notes', '')
 
-        start_d = date(year_m, mon_m, 1)
-        end_d = date(year_m, mon_m, calendar.monthrange(year_m, mon_m)[1])
-        teacher = get_object_or_404(Teacher, pk=teacher_id)
+                if amount:
+                    pay_date = datetime.strptime(pay_date_str, '%Y-%m-%d').date() if pay_date_str else today
+                    TeacherPayment.objects.create(
+                        teacher=teacher,
+                        amount=Decimal(amount),
+                        payment_date=pay_date,
+                        payment_method=method,
+                        payment_type=pay_type,
+                        period_month=mon_m,
+                        period_year=year_m,
+                        notes=notes
+                    )
+                    messages.success(request, f"Paiement de {amount} DH enregistré pour {teacher.name}.")
+                else:
+                    messages.error(request, "Veuillez préciser le montant du versement.")
 
-        if action == 'save_payment':
-            amount = request.POST.get('amount')
-            pay_date_str = request.POST.get('payment_date')
-            method = request.POST.get('payment_method', 'CASH')
-            pay_type = request.POST.get('payment_type', 'SALARY')
-            notes = request.POST.get('notes', '')
+            # Sessions list
+            sessions = Session.objects.filter(
+                Q(group__teacher=teacher, substitute_teacher__isnull=True) | Q(substitute_teacher=teacher),
+                status='DONE',
+                date__range=[start_d, end_d]
+            ).order_by('date', 'start_time')
 
-            if amount:
-                pay_date = datetime.strptime(pay_date_str, '%Y-%m-%d').date() if pay_date_str else today
-                TeacherPayment.objects.create(
-                    teacher=teacher,
-                    amount=Decimal(amount),
-                    payment_date=pay_date,
-                    payment_method=method,
-                    payment_type=pay_type,
-                    period_month=mon_m,
-                    period_year=year_m,
-                    notes=notes
-                )
-                messages.success(request, f"Paiement de {amount} DH enregistré pour {teacher.name}.")
-            else:
-                messages.error(request, "Montant manquant.")
+            sessions_list = [{'session': s, 'hours': s.duration_hours()} for s in sessions]
 
-        # Always compute result after any POST
-        sessions = Session.objects.filter(
-            Q(group__teacher=teacher, substitute_teacher__isnull=True) | Q(substitute_teacher=teacher),
-            status='DONE',
-            date__range=[start_d, end_d]
-        ).order_by('date', 'start_time')
+            # Payroll calculation
+            payroll_data = calculate_teacher_hours(teacher, start_d, end_d)
 
-        sessions_list = [{'session': s, 'hours': s.duration_hours()} for s in sessions]
-        payroll_data = calculate_teacher_hours(teacher, start_d, end_d)
+            # Logged payments for this month
+            logged_payments = TeacherPayment.objects.filter(
+                teacher=teacher,
+                period_month=mon_m,
+                period_year=year_m
+            ).order_by('payment_date', 'id')
+            total_paid = sum((p.amount for p in logged_payments), Decimal('0.00'))
 
-        logged_payments = TeacherPayment.objects.filter(
-            teacher=teacher, period_month=mon_m, period_year=year_m
-        ).order_by('payment_date')
-        total_paid = sum(p.amount for p in logged_payments)
-
-        result = {
-            'teacher': teacher,
-            'sessions': sessions_list,
-            'logged_payments': logged_payments,
-            'total_paid': total_paid,
-            'balance': payroll_data['salary_taught'] - total_paid,
-            'month_str': month_str,
-            'start_d': start_d,
-            'end_d': end_d,
-            **payroll_data
-        }
+            result = {
+                'teacher': teacher,
+                'sessions': sessions_list,
+                'logged_payments': logged_payments,
+                'total_paid': total_paid,
+                'balance': payroll_data['salary_taught'] - total_paid,
+                'month_str': month_str,
+                'month_label': f"{FRENCH_MONTHS[mon_m]} {year_m}",
+                'start_date_str': start_d.strftime('%Y-%m-%d'),
+                'end_date_str': end_d.strftime('%Y-%m-%d'),
+                'mon_m': mon_m,
+                'year_m': year_m,
+                **payroll_data
+            }
 
     return render(request, 'core/teacher_payroll.html', {
         'teacher_qs': teacher_qs,
         'result': result,
         'months_list': months_list,
         'selected_month': selected_month,
-        'selected_teacher_id': selected_teacher_id,
+        'selected_teacher_id': str(selected_teacher_id),
     })
 
 
