@@ -129,6 +129,7 @@
           <div class="d-flex align-items-center gap-2">
             <i class="bi bi-calendar3" style="color:#f59e0b;font-size:16px;"></i>
             <span class="fw-600">Horaires hebdomadaires</span>
+            <span class="badge bg-light text-secondary border ms-1" style="font-size:11px;font-weight:500;">Optionnel</span>
           </div>
           <button type="button" class="btn btn-sm btn-outline-primary" id="add-schedule-btn">
             <i class="bi bi-plus-circle"></i> Ajouter créneau
@@ -136,6 +137,13 @@
         </div>
         <div class="card-body">
           {{ formset.management_form }}
+          <div id="no-schedules-placeholder" class="text-center py-4 {% if formset.forms %}d-none{% endif %}">
+            <div style="width: 46px; height: 46px; border-radius: 50%; background: var(--surface-alt, #f8fafc); display: inline-flex; align-items: center; justify-content: center; margin-bottom: 0.6rem;">
+              <i class="bi bi-calendar-x" style="font-size: 22px; color: var(--text-secondary, #64748b);"></i>
+            </div>
+            <div style="font-size: 14px; font-weight: 600; color: var(--text-primary, #1e293b);">Aucun horaire hebdomadaire défini</div>
+            <div style="font-size: 13px; color: var(--text-secondary, #64748b); max-width: 420px; margin: 0 auto;">Ce groupe peut être enregistré sans horaire. Si vous souhaitez planifier des créneaux réguliers, cliquez sur « Ajouter créneau ».</div>
+          </div>
           <div id="schedules-container">
             {% for f in formset %}
               <div class="row g-3 align-items-end schedule-form-row mb-3 pb-3" style="border-bottom:1px solid var(--border);"
@@ -334,6 +342,7 @@
 <!-- Empty form template (hidden) -->
 <div id="empty-form-template" class="d-none">
   <div class="row g-3 align-items-end schedule-form-row mb-3 pb-3" style="border-bottom:1px solid var(--border);" data-form-index="__prefix__">
+    {% for hidden in formset.empty_form.hidden_fields %}{{ hidden }}{% endfor %}
     <div class="col-md-3">
       <label class="form-label">Jour <span style="color:var(--danger);">*</span></label>
       {{ formset.empty_form.day }}
@@ -351,7 +360,7 @@
       {{ formset.empty_form.room }}
     </div>
     <div class="col-md-1 text-end">
-      <button type="button" class="btn btn-outline-danger btn-sm remove-schedule-btn" title="Supprimer">
+      <button type="button" class="btn btn-outline-danger btn-sm remove-schedule-btn" title="Supprimer" aria-label="Supprimer ce créneau horaire">
         <i class="bi bi-trash"></i>
       </button>
     </div>
@@ -369,11 +378,27 @@
 <script>
 document.addEventListener('DOMContentLoaded', function () {
   const container = document.getElementById('schedules-container');
+  const emptyPlaceholder = document.getElementById('no-schedules-placeholder');
   const addBtn = document.getElementById('add-schedule-btn');
   const totalFormsInput = document.getElementById('id_schedules-TOTAL_FORMS');
   const emptyTemplate = document.getElementById('empty-form-template').innerHTML;
   const teacherSelect = document.getElementById('id_teacher');
   const courseId = "{% if course %}{{ course.id }}{% endif %}";
+
+  function updateEmptyState() {
+    if (!emptyPlaceholder) return;
+    const rows = container.querySelectorAll('.schedule-form-row');
+    let visibleCount = 0;
+    rows.forEach(r => {
+      const isDeleted = r.style.opacity === '0.4' || r.querySelector('input[name$="-DELETE"]:checked');
+      if (!isDeleted) visibleCount++;
+    });
+    if (visibleCount === 0) {
+      emptyPlaceholder.classList.remove('d-none');
+    } else {
+      emptyPlaceholder.classList.add('d-none');
+    }
+  }
 
   function checkRowConflict(row) {
     const idx = row.getAttribute('data-form-index');
@@ -415,7 +440,8 @@ document.addEventListener('DOMContentLoaded', function () {
     btn.addEventListener('click', function () {
       const row = btn.closest('.schedule-form-row');
       const cb = row.querySelector('input[type="checkbox"][name$="-DELETE"]');
-      if (cb) {
+      const idInput = row.querySelector('input[name$="-id"]');
+      if (cb && idInput && idInput.value) {
         cb.checked = true;
         row.style.opacity = '0.4';
         row.style.pointerEvents = 'none';
@@ -425,12 +451,13 @@ document.addEventListener('DOMContentLoaded', function () {
         totalFormsInput.value = rows.length;
         rows.forEach((r, i) => {
           r.setAttribute('data-form-index', i);
-          r.querySelectorAll('input, select').forEach(el => {
-            el.id = el.id.replace(/schedules-\d+/, `schedules-${i}`);
-            el.name = el.name.replace(/schedules-\d+/, `schedules-${i}`);
+          r.querySelectorAll('input, select, textarea').forEach(el => {
+            if (el.id) el.id = el.id.replace(/schedules-\d+/, `schedules-${i}`);
+            if (el.name) el.name = el.name.replace(/schedules-\d+/, `schedules-${i}`);
           });
         });
       }
+      updateEmptyState();
     });
   }
 
@@ -439,11 +466,12 @@ document.addEventListener('DOMContentLoaded', function () {
     const html = emptyTemplate.replace(/__prefix__/g, count).replace(/schedules-__prefix__/g, `schedules-${count}`);
     const div = document.createElement('div');
     div.innerHTML = html.trim();
-    const row = div.firstChild;
+    const row = div.firstElementChild;
     container.appendChild(row);
     totalFormsInput.value = count + 1;
     bindDeleteBtn(row.querySelector('.remove-schedule-btn'));
     bindRowListeners(row);
+    updateEmptyState();
   });
 
   container.querySelectorAll('.schedule-form-row').forEach(row => {
@@ -452,6 +480,8 @@ document.addEventListener('DOMContentLoaded', function () {
     bindRowListeners(row);
     checkRowConflict(row);
   });
+
+  updateEmptyState();
 });
 
 // ──────────────────────────────────────────────

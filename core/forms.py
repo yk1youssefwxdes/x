@@ -244,7 +244,7 @@ CourseGroupScheduleFormSet = inlineformset_factory(
     CourseGroup,
     CourseGroupSchedule,
     fields=['day', 'start_time', 'end_time', 'room'],
-    extra=1,
+    extra=0,
     can_delete=True,
     widgets={
         'day': forms.Select(attrs={'class': 'form-select'}),

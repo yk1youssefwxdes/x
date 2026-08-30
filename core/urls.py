@@ -208,6 +208,7 @@ urlpatterns = [
 
     # System Configuration Engine
     path('settings/', views.system_settings_view, name='system_settings'),
+    path('settings/reset-data/', views.admin_reset_data, name='admin_reset_data'),
 ]
 
 

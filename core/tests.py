@@ -1057,6 +1057,74 @@ class SimplifiedWorkflowsTestCase(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.context['result']['total_paid'], Decimal('1500.00'))
 
+    def test_admin_reset_data(self):
+        # GET page
+        response = self.client.get(reverse('core:admin_reset_data'))
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('counts', response.context)
+        
+        # POST with wrong confirm text
+        response = self.client.post(reverse('core:admin_reset_data'), {'confirm_text': 'WRONG'})
+        self.assertRedirects(response, reverse('core:admin_reset_data'))
+        self.assertTrue(Student.objects.exists())
+        
+        # POST with SUPPRIMER
+        response = self.client.post(reverse('core:admin_reset_data'), {'confirm_text': 'SUPPRIMER'})
+        self.assertRedirects(response, reverse('core:admin_reset_data'))
+        
+        self.assertEqual(Student.objects.count(), 0)
+        self.assertEqual(Teacher.objects.count(), 0)
+        self.assertEqual(CourseGroup.objects.count(), 0)
+        self.assertEqual(Room.objects.count(), 0)
+
+    def test_course_group_create_without_schedules(self):
+        response = self.client.post(reverse('core:course_group_create'), {
+            'name': 'Groupe Sans Horaire',
+            'subject': 'Philosophie',
+            'monthly_price': '300.00',
+            'teacher': self.teacher.id,
+            'is_active': 'on',
+            'schedules-TOTAL_FORMS': '0',
+            'schedules-INITIAL_FORMS': '0',
+            'schedules-MIN_NUM_FORMS': '0',
+            'schedules-MAX_NUM_FORMS': '1000',
+        })
+        self.assertRedirects(response, reverse('core:courses_list'))
+        created_group = CourseGroup.objects.get(name='Groupe Sans Horaire')
+        self.assertEqual(created_group.schedules.count(), 0)
+
+    def test_course_group_edit_remove_all_schedules(self):
+        sch = CourseGroupSchedule.objects.create(
+            course_group=self.group,
+            day='MON',
+            start_time=time(10, 0),
+            end_time=time(12, 0),
+            room=self.room
+        )
+        self.assertEqual(self.group.schedules.count(), 1)
+        
+        response = self.client.post(reverse('core:course_group_edit', args=[self.group.id]), {
+            'name': self.group.name,
+            'subject': self.group.subject,
+            'monthly_price': str(self.group.monthly_price),
+            'teacher': self.teacher.id,
+            'is_active': 'on',
+            'schedules-TOTAL_FORMS': '1',
+            'schedules-INITIAL_FORMS': '1',
+            'schedules-MIN_NUM_FORMS': '0',
+            'schedules-MAX_NUM_FORMS': '1000',
+            'schedules-0-id': sch.id,
+            'schedules-0-DELETE': 'on',
+            'schedules-0-day': sch.day,
+            'schedules-0-start_time': '10:00',
+            'schedules-0-end_time': '12:00',
+            'schedules-0-room': self.room.id,
+        })
+        self.assertRedirects(response, reverse('core:courses_list'))
+        self.assertEqual(self.group.schedules.count(), 0)
+
+
+
 
 
 

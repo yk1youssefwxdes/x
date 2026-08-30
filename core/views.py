@@ -6070,6 +6070,77 @@ def system_settings_view(request):
     return render(request, 'core/system_settings.html', {'form': form})
 
 
+def admin_reset_data(request):
+    """
+    Page d'administration pour réinitialiser / purger toutes les données opérationnelles.
+    """
+    if not request.user.is_authenticated or not (request.user.is_superuser or request.user.is_staff):
+        messages.error(request, "Accès réservé aux administrateurs.")
+        return redirect('core:cockpit')
+
+    from .models import (
+        SessionChangeHistory, MakeupSession, Attendance, WhatsAppSendLog,
+        Payment, TeacherPayment, TeacherLeave, TeacherAvailability,
+        Session, Enrollment, CourseGroupSchedule, Holiday,
+        Announcement, ScheduleLock, CourseGroup, Student,
+        Level, LevelCategory, Teacher, Room
+    )
+
+    if request.method == 'POST':
+        confirm_text = request.POST.get('confirm_text', '').strip()
+        if confirm_text != 'SUPPRIMER':
+            messages.error(request, "Veuillez taper exactement le mot 'SUPPRIMER' pour confirmer la suppression définitive.")
+            return redirect('core:admin_reset_data')
+
+        # Execute deletions in strict foreign-key order
+        deleted_counts = {
+            'SessionChangeHistory': SessionChangeHistory.objects.all().delete()[0],
+            'MakeupSession': MakeupSession.objects.all().delete()[0],
+            'Attendance': Attendance.objects.all().delete()[0],
+            'WhatsAppSendLog': WhatsAppSendLog.objects.all().delete()[0],
+            'Payment': Payment.objects.all().delete()[0],
+            'TeacherPayment': TeacherPayment.objects.all().delete()[0],
+            'TeacherLeave': TeacherLeave.objects.all().delete()[0],
+            'TeacherAvailability': TeacherAvailability.objects.all().delete()[0],
+            'Session': Session.objects.all().delete()[0],
+            'Enrollment': Enrollment.objects.all().delete()[0],
+            'CourseGroupSchedule': CourseGroupSchedule.objects.all().delete()[0],
+            'Holiday': Holiday.objects.all().delete()[0],
+            'Announcement': Announcement.objects.all().delete()[0],
+            'ScheduleLock': ScheduleLock.objects.all().delete()[0],
+            'CourseGroup': CourseGroup.objects.all().delete()[0],
+            'Student': Student.objects.all().delete()[0],
+            'Level': Level.objects.all().delete()[0],
+            'LevelCategory': LevelCategory.objects.all().delete()[0],
+            'Teacher': Teacher.objects.all().delete()[0],
+            'Room': Room.objects.all().delete()[0],
+        }
+
+        total_deleted = sum(deleted_counts.values())
+        messages.success(request, f"Toutes les données ont été réinitialisées avec succès ({total_deleted} enregistrements supprimés).")
+        return redirect('core:admin_reset_data')
+
+    # Counts for display
+    counts = {
+        'students': Student.objects.count(),
+        'teachers': Teacher.objects.count(),
+        'course_groups': CourseGroup.objects.count(),
+        'sessions': Session.objects.count(),
+        'payments': Payment.objects.count(),
+        'attendances': Attendance.objects.count(),
+        'rooms': Room.objects.count(),
+        'levels': Level.objects.count(),
+        'whatsapp_logs': WhatsAppSendLog.objects.count(),
+    }
+    total_records = sum(counts.values())
+
+    return render(request, 'core/admin_reset_data.html', {
+        'counts': counts,
+        'total_records': total_records,
+    })
+
+
+
 
 
 
