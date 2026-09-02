@@ -6067,7 +6067,136 @@ def system_settings_view(request):
                 initial_data[key] = raw_val
         form = SystemSettingsForm(initial=initial_data)
 
-    return render(request, 'core/system_settings.html', {'form': form})
+    from .models import Level, Room, CourseGroup, Session, Teacher, Student
+    stats = {
+        'levels_count': Level.objects.count(),
+        'rooms_count': Room.objects.count(),
+        'groups_count': CourseGroup.objects.count(),
+        'sessions_count': Session.objects.count(),
+        'teachers_count': Teacher.objects.count(),
+        'students_count': Student.objects.count(),
+    }
+
+    return render(request, 'core/system_settings.html', {
+        'form': form,
+        'stats': stats,
+    })
+
+
+@require_http_methods(["POST"])
+def system_quick_action(request):
+    """
+    Exécute des actions rapides d'initialisation et de maintenance du centre.
+    """
+    if not request.user.is_authenticated or not (request.user.is_superuser or request.user.is_staff):
+        messages.error(request, "Accès réservé aux administrateurs.")
+        return redirect('core:cockpit')
+
+    action = request.POST.get('action', '').strip()
+
+    if action == 'setup_levels':
+        from .models import Level, LevelCategory
+        from .management.commands.setup_levels import Command as SetupLevelsCommand
+        cmd = SetupLevelsCommand()
+        category_map = {}
+        for code, name in cmd.CATEGORIES:
+            cat, _ = LevelCategory.objects.get_or_create(code=code, defaults={'name': name})
+            category_map[code] = cat
+
+        created_count = 0
+        updated_count = 0
+        for name, category_code in cmd.LEVELS_DATA:
+            cat = category_map[category_code]
+            lvl, created = Level.objects.get_or_create(name=name, defaults={'category': cat})
+            if created:
+                created_count += 1
+            elif lvl.category != cat:
+                lvl.category = cat
+                lvl.save()
+                updated_count += 1
+
+        total = Level.objects.count()
+        if created_count > 0:
+            messages.success(request, f"✨ {created_count} niveaux scolaires créés avec succès ! ({total} niveaux configurés).")
+        elif updated_count > 0:
+            messages.success(request, f"✨ {updated_count} niveaux mis à jour. Tous les {total} niveaux sont opérationnels.")
+        else:
+            messages.info(request, f"Tous les {total} niveaux scolaires officiels sont déjà en place.")
+
+    elif action == 'setup_rooms':
+        from .models import Room
+        default_rooms = [
+            {"name": "Salle 1", "capacity": 20, "has_projector": True, "has_air_conditioning": True},
+            {"name": "Salle 2", "capacity": 25, "has_projector": True, "has_air_conditioning": False},
+            {"name": "Salle 3", "capacity": 30, "has_projector": False, "has_air_conditioning": True},
+            {"name": "Salle 4", "capacity": 20, "has_projector": False, "has_air_conditioning": False},
+            {"name": "Salle Informatique", "capacity": 20, "has_computer_lab": True, "has_projector": True, "has_air_conditioning": True},
+            {"name": "Laboratoire Sciences", "capacity": 24, "has_science_lab": True, "has_projector": True, "has_air_conditioning": True},
+        ]
+        created_count = 0
+        for r_data in default_rooms:
+            _, created = Room.objects.get_or_create(
+                name=r_data["name"],
+                defaults={
+                    "capacity": r_data["capacity"],
+                    "has_projector": r_data.get("has_projector", False),
+                    "has_air_conditioning": r_data.get("has_air_conditioning", False),
+                    "has_computer_lab": r_data.get("has_computer_lab", False),
+                    "has_science_lab": r_data.get("has_science_lab", False),
+                    "is_active": True,
+                }
+            )
+            if created:
+                created_count += 1
+        total = Room.objects.count()
+        if created_count > 0:
+            messages.success(request, f"🏫 {created_count} salles créées avec succès ! ({total} salles actives au total).")
+        else:
+            messages.info(request, f"Toutes les salles types existent déjà ({total} salles au total).")
+
+    elif action == 'generate_sessions':
+        from .utils import generate_sessions_from_coursegroups
+        from datetime import date, timedelta
+        start_date = date.today()
+        end_date = start_date + timedelta(weeks=4)
+        summary = generate_sessions_from_coursegroups(start_date, end_date, force=False)
+        created = summary.get('created', 0)
+        updated = summary.get('updated', 0)
+        skipped = summary.get('skipped', 0)
+        errors = summary.get('errors', [])
+        if errors:
+            messages.warning(request, f"Planification effectuée avec alertes : {created} créées, {skipped} conservées. Erreurs : {len(errors)}")
+        elif created == 0 and skipped == 0:
+            messages.warning(request, "Aucun créneau ou groupe de cours actif n'a été trouvé. Veuillez d'abord créer des groupes avec leurs horaires.")
+        else:
+            messages.success(request, f"📅 Planification réussie : {created} nouvelles séances créées sur les 4 prochaines semaines ({skipped} déjà en place).")
+
+    elif action == 'init_admin':
+        from django.core.management import call_command
+        from io import StringIO
+        buf = StringIO()
+        try:
+            call_command('initadmin', stdout=buf)
+            messages.success(request, "🛡️ Compte super-administrateur 'admin' (mot de passe: 1234) vérifié et opérationnel !")
+        except Exception as e:
+            messages.error(request, f"Erreur lors de l'initialisation du compte admin : {e}")
+
+    elif action == 'load_demo':
+        from django.core.management import call_command
+        from io import StringIO
+        buf = StringIO()
+        try:
+            call_command('load_demo_data', force=True, stdout=buf)
+            messages.success(request, "🚀 Données de démonstration chargées avec succès ! Les élèves, professeurs, salles, cours et séances sont prêts.")
+        except Exception as e:
+            messages.error(request, f"Erreur lors du chargement des données démo : {e}")
+
+    else:
+        messages.error(request, "Action rapide non reconnue.")
+
+    from django.urls import reverse
+    return redirect(reverse('core:system_settings') + '?tab=quick-actions')
+
 
 
 def admin_reset_data(request):
