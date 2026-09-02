@@ -7,7 +7,7 @@ def seed_initial_settings(apps, schema_editor):
     SystemSetting = apps.get_model('core', 'SystemSetting')
     defaults = [
         # Identité
-        ('SCHOOL_NAME', 'Centre Tonaroz', 'Nom du centre', 'SCHOOL'),
+        ('SCHOOL_NAME', 'Centre My2i', 'Nom du centre', 'SCHOOL'),
         ('SCHOOL_SUBTITLE', 'Soutien Scolaire & Langues', 'Sous-titre / Description', 'SCHOOL'),
         ('SCHOOL_ADDRESS', 'Rue Marrakech, Im 16, Ap N 3, 2ème Étage, Khouribga', 'Adresse', 'SCHOOL'),
         ('SCHOOL_PHONE', '0707477911 / 0661569522', 'Téléphones', 'SCHOOL'),

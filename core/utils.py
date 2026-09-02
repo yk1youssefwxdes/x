@@ -25,7 +25,7 @@ class SafeDict(dict):
         return f"{{{key}}}"
 
 DEFAULT_SETTINGS = {
-    'SCHOOL_NAME': 'Centre Tonaroz',
+    'SCHOOL_NAME': 'Centre My2i',
     'SCHOOL_SUBTITLE': 'Soutien Scolaire & Langues',
     'SCHOOL_ADDRESS': 'Rue Marrakech, Im 16, Ap N 3, 2ème Étage, Khouribga',
     'SCHOOL_PHONE': '0707477911 / 0661569522',
@@ -1573,7 +1573,7 @@ def generate_receipt_pdf(payment) -> BytesIO:
     p.setFont("Helvetica-Oblique", 8)
     thank_you_note = get_setting('RECEIPT_FOOTER_THANK_YOU', 'Merci pour votre confiance ! - شكراً لثقتكم')
     p.drawCentredString(width/2, 40, thank_you_note)
-    school_name = get_setting('SCHOOL_NAME', 'Centre Tonaroz')
+    school_name = get_setting('SCHOOL_NAME', 'Centre My2i')
     school_phone = get_setting('SCHOOL_PHONE', '')
     school_subtitle = get_setting('SCHOOL_SUBTITLE', 'Soutien Scolaire & Langues')
     p.drawCentredString(width/2, 28, f"{school_name} - {school_subtitle} - Tél: {school_phone}")
@@ -1789,7 +1789,7 @@ def generate_teacher_payslip_pdf(teacher, start_date, end_date, result) -> Bytes
     elements = []
     
     # 1. School Information & Header
-    school_name = getattr(settings, 'SCHOOL_NAME', 'Centre Tonaroz')
+    school_name = getattr(settings, 'SCHOOL_NAME', 'Centre My2i')
     school_address = getattr(settings, 'SCHOOL_ADDRESS', '')
     school_phone = getattr(settings, 'SCHOOL_PHONE', '')
     school_email = getattr(settings, 'SCHOOL_EMAIL', '')
@@ -2892,7 +2892,7 @@ def send_whatsapp_group_invites(student, enrollments=None) -> list:
         lines.append(f"• {grp.name}{subject_info} : {grp.whatsapp_group_link.strip()}")
     group_links_text = "\n".join(lines)
 
-    school_name = get_setting('SCHOOL_NAME', getattr(settings, 'SCHOOL_NAME', 'Centre Tonaroz'))
+    school_name = get_setting('SCHOOL_NAME', getattr(settings, 'SCHOOL_NAME', 'Centre My2i'))
     parent_name = student.parent_name or "Parent"
 
     default_template = (

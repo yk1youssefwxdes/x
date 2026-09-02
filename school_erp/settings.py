@@ -123,7 +123,7 @@ WHITENOISE_MANIFEST_STRICT = False
 
 
 # Settings for school center (configurable)
-SCHOOL_NAME = "Centre Tonaroz"
+SCHOOL_NAME = "Centre My2i"
 SCHOOL_ADDRESS = "Rue Marrakech, Im 16, Ap N 3, 2ème Étage, Khouribga"
 SCHOOL_PHONE = "0707477911 / 0661569522"
 SCHOOL_EMAIL = "contact@centre-tonaroz.com"

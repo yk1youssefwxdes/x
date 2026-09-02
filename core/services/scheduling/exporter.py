@@ -14,7 +14,7 @@ class CalendarExporter:
         lines = [
             "BEGIN:VCALENDAR",
             "VERSION:2.0",
-            "PRODID:-//Centre Tonaroz//Academic Scheduling System//FR",
+            "PRODID:-//Centre My2i//Academic Scheduling System//FR",
             f"X-WR-CALNAME:{title}",
             "CALSCALE:GREGORIAN",
             "METHOD:PUBLISH"

@@ -5252,7 +5252,7 @@ def kiosk_home(request):
         'announcements': announcements,
         'upcoming_events': upcoming_events_list,
         'timeout': timeout,
-        'SCHOOL_NAME': getattr(settings, 'SCHOOL_NAME', 'Centre Tonaroz'),
+        'SCHOOL_NAME': getattr(settings, 'SCHOOL_NAME', 'Centre My2i'),
     })
 
 
@@ -5333,7 +5333,7 @@ def kiosk_select(request):
     return render(request, 'core/kiosk_select.html', {
         'students': students,
         'timeout': timeout,
-        'SCHOOL_NAME': getattr(settings, 'SCHOOL_NAME', 'Centre Tonaroz'),
+        'SCHOOL_NAME': getattr(settings, 'SCHOOL_NAME', 'Centre My2i'),
     })
 
 
@@ -5417,7 +5417,7 @@ def kiosk_student(request):
         'remarks': remarks,
         'announcements': announcements,
         'timeout': timeout,
-        'SCHOOL_NAME': getattr(settings, 'SCHOOL_NAME', 'Centre Tonaroz'),
+        'SCHOOL_NAME': getattr(settings, 'SCHOOL_NAME', 'Centre My2i'),
     })
 
 
