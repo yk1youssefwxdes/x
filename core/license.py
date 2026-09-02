@@ -67,6 +67,10 @@ def _auto_generate_cloud_license() -> dict:
 
 
 def _load_license_data() -> dict:
+    # Cloud / auto-license: always generate a wildcard license without checking local files.
+    if _is_cloud_environment() or os.getenv("AUTO_LICENSE", "").lower() in ("true", "1", "yes"):
+        return _auto_generate_cloud_license()
+
     candidate_paths = [
         get_licenses_dir() / "license.enc",
         get_data_dir() / "license.enc",
@@ -94,10 +98,6 @@ def _load_license_data() -> dict:
     # Return valid candidate if found
     if "valid_candidate" in locals():
         return valid_candidate
-
-    # Auto-generate cloud wildcard license if on cloud or auto-license requested
-    if _is_cloud_environment() or os.getenv("AUTO_LICENSE", "true").lower() in ("true", "1", "yes"):
-        return _auto_generate_cloud_license()
 
     # If no file decrypted successfully, die
     _die("Fichier de licence manquant ou invalide. Veuillez contacter : 0715125245")
@@ -156,10 +156,13 @@ def validate_or_exit() -> None:
 
     today = datetime.date.today()
 
-    if today < start_date:
-        _die("La licence n'est pas encore active.")
+    # Cloud / wildcard licenses (end_date=2099-12-31) are always valid;
+    # skip expiry check for cloud environments to avoid false positives.
+    if not (_is_cloud_environment() or licensed_fingerprint == _WILDCARD_FINGERPRINT):
+        if today < start_date:
+            _die("La licence n'est pas encore active.")
 
-    if today > end_date:
-        _die("Votre période d'essai a expiré. Veuillez contacter : 0715125245")
+        if today > end_date:
+            _die("Votre période d'essai a expiré. Veuillez contacter : 0715125245")
 
     return True
