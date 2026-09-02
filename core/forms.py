@@ -164,8 +164,8 @@ class StudentForm(forms.ModelForm):
                 'schedules': schedules,
                 'checked': g.id in checked_ids,
             })
-            # "Sans niveau" last, others sorted by name
-            ordered = dict(sorted(by_level.items(), key=lambda kv: (kv[0][0] == '', kv[0][1])))
+        # "Sans niveau" last, others sorted by name
+        ordered = dict(sorted(by_level.items(), key=lambda kv: (kv[0][0] == '', kv[0][1])))
         return ordered
         
     def save(self, commit=True):
