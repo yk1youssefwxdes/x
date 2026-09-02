@@ -423,19 +423,42 @@ except Exception as _e:
 
 
 # ---------------------------------------------------------------------------
-# Visual constants
+# Visual constants (Modern Slate Dark Theme)
 # ---------------------------------------------------------------------------
 
-BG        = "#0f1115"
-PANEL     = "#171a21"
-PANEL_ALT = "#1d2129"
-ACCENT    = "#4f8cff"
-GREEN     = "#2ecc71"
-RED       = "#ff5c5c"
-AMBER     = "#f5a623"
-TEXT_MAIN = "#e8eaed"
-TEXT_DIM  = "#8a8f98"
-FONT      = "Segoe UI"
+BG          = "#0b0f19"  # Deep slate navy
+PANEL       = "#141c2b"  # Elevated card surface
+PANEL_ALT   = "#0d1522"  # Recessed log viewer
+CARD_BORDER = "#1f2b3e"  # Subtle structural border
+ACCENT      = "#38bdf8"  # Sky blue accent
+PURPLE      = "#6366f1"  # Indigo for QR code & network tools
+GREEN       = "#10b981"  # Emerald green (live)
+RED         = "#f43f5e"  # Rose red (stopped)
+AMBER       = "#f59e0b"  # Warm amber (starting/stopping)
+TEXT_MAIN   = "#f8fafc"  # Bright white text
+TEXT_DIM    = "#94a3b8"  # Slate secondary text
+FONT        = "Segoe UI"
+
+
+# ---------------------------------------------------------------------------
+# QR Code Matrix Generator (Uses reportlab built-in qrencoder)
+# ---------------------------------------------------------------------------
+
+def _generate_qr_matrix(text: str) -> list[list[bool]] | None:
+    """Generate a 2D boolean matrix for QR code rendering without extra pip packages."""
+    try:
+        from reportlab.graphics.barcode.qrencoder import QRCode
+        for version in range(1, 15):
+            try:
+                qr = QRCode(version, 0)
+                qr.addData(text)
+                qr.make()
+                return qr.modules
+            except Exception:
+                continue
+    except Exception:
+        pass
+    return None
 
 
 # ---------------------------------------------------------------------------
@@ -486,9 +509,9 @@ class ServerSession:
 class ServerApp:
     def __init__(self, root):
         self.root = root
-        self.root.title(f"{APP_NAME} v{VERSION} — Server Controller")
-        self.root.geometry("480x420")
-        self.root.minsize(480, 420)
+        self.root.title(f"{APP_NAME} v{VERSION} — Contrôleur de Serveur")
+        self.root.geometry("560x600")
+        self.root.minsize(520, 540)
         self.root.configure(bg=BG)
 
         # ── Global application state ─────────────────────────────────────────
@@ -508,7 +531,7 @@ class ServerApp:
         self._build_ui()
         self.root.protocol("WM_DELETE_WINDOW", self.on_closing)
 
-        _disk_log(f"Launcher initialized ({APP_NAME} v{VERSION}). Data dir: {get_data_dir()}")
+        _disk_log(f"Lanceur initialisé ({APP_NAME} v{VERSION}). Répertoire de données : {get_data_dir()}")
 
     # =========================================================================
     # API key
@@ -570,6 +593,23 @@ class ServerApp:
         """Return a logging function safe for background thread calls."""
         return lambda msg: self.root.after(0, lambda m=msg: self._log(m))
 
+    def _clear_log(self):
+        """Clear visible log entries."""
+        self.log_text.configure(state="normal")
+        self.log_text.delete("1.0", "end")
+        self.log_text.configure(state="disabled")
+
+    def _open_data_folder(self):
+        """Open customer data folder in Windows Explorer."""
+        data_path = get_data_dir()
+        try:
+            if sys.platform == "win32":
+                os.startfile(str(data_path))
+            else:
+                subprocess.Popen(["xdg-open", str(data_path)])
+        except Exception as exc:
+            self._log(f"Impossible d'ouvrir le dossier de données : {exc}")
+
     # =========================================================================
     # UI construction
     # =========================================================================
@@ -581,50 +621,86 @@ class ServerApp:
         except tk.TclError:
             pass
 
-        style.configure("Card.TFrame", background=PANEL)
-        style.configure("Root.TFrame", background=BG)
+        # Buttons styling
+        style.configure(
+            "Start.TButton",
+            background=GREEN, foreground="#ffffff",
+            font=(FONT, 10, "bold"), padding=(10, 8), borderwidth=0,
+        )
+        style.map(
+            "Start.TButton",
+            background=[("disabled", "#1c3228"), ("active", "#059669")],
+            foreground=[("disabled", "#4b6558")],
+        )
 
         style.configure(
-            "Start.TButton",
-            background=GREEN, foreground="#0b1f12",
-            font=(FONT, 11, "bold"), padding=10, borderwidth=0,
+            "Stop.TButton",
+            background=RED, foreground="#ffffff",
+            font=(FONT, 10, "bold"), padding=(10, 8), borderwidth=0,
         )
         style.map(
-            "Start.TButton",
-            background=[("disabled", "#2a3a30"), ("active", "#27ae60")],
-            foreground=[("disabled", "#5a6b60")],
+            "Stop.TButton",
+            background=[("disabled", "#331a22"), ("active", "#e11d48")],
+            foreground=[("disabled", "#6e4550")],
         )
+
         style.configure(
-            "Stop.TButton",
-            background=RED, foreground="#2a0a0a",
-            font=(FONT, 11, "bold"), padding=10, borderwidth=0,
+            "Open.TButton",
+            background="#0284c7", foreground="#ffffff",
+            font=(FONT, 10, "bold"), padding=(10, 8), borderwidth=0,
         )
         style.map(
-            "Stop.TButton",
-            background=[("disabled", "#3a2626"), ("active", "#e64545")],
-            foreground=[("disabled", "#6b5a5a")],
+            "Open.TButton",
+            background=[("disabled", "#162b3a"), ("active", "#0369a1")],
+            foreground=[("disabled", "#415f75")],
+        )
+
+        style.configure(
+            "Qr.TButton",
+            background=PURPLE, foreground="#ffffff",
+            font=(FONT, 10, "bold"), padding=(10, 8), borderwidth=0,
+        )
+        style.map(
+            "Qr.TButton",
+            background=[("disabled", "#22213a"), ("active", "#4338ca")],
+            foreground=[("disabled", "#55527a")],
         )
 
     def _build_ui(self):
         root_frame = tk.Frame(self.root, bg=BG)
-        root_frame.pack(fill="both", expand=True, padx=18, pady=18)
+        root_frame.pack(fill="both", expand=True, padx=20, pady=18)
 
-        # Header
+        # ── 1. Header ────────────────────────────────────────────────────────
         header = tk.Frame(root_frame, bg=BG)
         header.pack(fill="x", pady=(0, 14))
-        tk.Label(header, text=APP_NAME, font=(FONT, 16, "bold"),
+
+        titles_frame = tk.Frame(header, bg=BG)
+        titles_frame.pack(side="left", fill="x", expand=True)
+
+        tk.Label(titles_frame, text=APP_NAME, font=(FONT, 17, "bold"),
                  bg=BG, fg=TEXT_MAIN).pack(anchor="w")
-        tk.Label(header, text=f"Local Server Controller • v{VERSION}", font=(FONT, 10),
+        tk.Label(titles_frame, text=f"Contrôleur de Serveur Local • v{VERSION}", font=(FONT, 9),
                  bg=BG, fg=TEXT_DIM).pack(anchor="w")
 
-        # Status card
-        status_card = tk.Frame(root_frame, bg=PANEL, padx=16, pady=14)
+        # Quick action: Open Data Folder
+        data_btn = tk.Button(
+            header, text="📂 Données", font=(FONT, 8, "bold"),
+            bg=PANEL, fg=TEXT_DIM, activebackground=CARD_BORDER,
+            activeforeground=TEXT_MAIN, bd=0, padx=10, pady=4,
+            cursor="hand2", command=self._open_data_folder,
+        )
+        data_btn.pack(side="right")
+
+        # ── 2. Status Card ───────────────────────────────────────────────────
+        status_card = tk.Frame(root_frame, bg=PANEL, padx=16, pady=14,
+                               highlightbackground=CARD_BORDER, highlightthickness=1)
         status_card.pack(fill="x", pady=(0, 14))
 
+        # Status row
         status_row = tk.Frame(status_card, bg=PANEL)
         status_row.pack(fill="x")
 
-        self.status_dot = tk.Canvas(status_row, width=14, height=14,
+        self.status_dot = tk.Canvas(status_row, width=16, height=16,
                                     bg=PANEL, highlightthickness=0)
         self.status_dot.pack(side="left", padx=(0, 10))
         self._draw_dot(RED)
@@ -632,41 +708,98 @@ class ServerApp:
         status_text_frame = tk.Frame(status_row, bg=PANEL)
         status_text_frame.pack(side="left", fill="x", expand=True)
 
-        self.status_label = tk.Label(status_text_frame, text="Stopped",
+        self.status_label = tk.Label(status_text_frame, text="Serveur Arrêté",
                                      font=(FONT, 13, "bold"), bg=PANEL, fg=TEXT_MAIN)
         self.status_label.pack(anchor="w")
 
-        self.status_sub = tk.Label(status_text_frame, text="Server is not running",
+        self.status_sub = tk.Label(status_text_frame,
+                                   text="Cliquez sur 'Démarrer le Serveur' pour lancer l'application",
                                    font=(FONT, 9), bg=PANEL, fg=TEXT_DIM)
         self.status_sub.pack(anchor="w")
 
-        self.url_label = tk.Label(status_card, text="",
-                                  font=(FONT, 9, "underline"), bg=PANEL,
-                                  fg=ACCENT, cursor="hand2")
-        self.url_label.pack(anchor="w", pady=(8, 0))
-        self.url_label.bind("<Button-1>", self._open_url)
+        # Service badges row
+        badges_row = tk.Frame(status_card, bg=PANEL)
+        badges_row.pack(fill="x", pady=(10, 4))
 
-        # Buttons
-        btn_row = tk.Frame(root_frame, bg=BG)
-        btn_row.pack(fill="x", pady=(0, 14))
+        self.web_badge = tk.Label(badges_row, text="🌐 Web : Arrêté",
+                                  font=(FONT, 8, "bold"), bg=PANEL_ALT, fg=TEXT_DIM,
+                                  padx=8, pady=3)
+        self.web_badge.pack(side="left", padx=(0, 8))
 
-        self.start_btn = ttk.Button(btn_row, text="▶  Start Server",
+        self.wa_badge = tk.Label(badges_row, text="💬 WhatsApp : Arrêté",
+                                 font=(FONT, 8, "bold"), bg=PANEL_ALT, fg=TEXT_DIM,
+                                 padx=8, pady=3)
+        self.wa_badge.pack(side="left")
+
+        # URLs display
+        urls_box = tk.Frame(status_card, bg=PANEL)
+        urls_box.pack(fill="x", pady=(8, 0))
+
+        self.url_local_label = tk.Label(urls_box, text="",
+                                        font=(FONT, 9, "bold"), bg=PANEL,
+                                        fg=ACCENT, cursor="hand2")
+        self.url_local_label.pack(anchor="w")
+        self.url_local_label.bind("<Button-1>", lambda e: self._open_url("local"))
+
+        self.url_lan_label = tk.Label(urls_box, text="",
+                                      font=(FONT, 9), bg=PANEL,
+                                      fg=TEXT_DIM, cursor="hand2")
+        self.url_lan_label.pack(anchor="w", pady=(2, 0))
+        self.url_lan_label.bind("<Button-1>", lambda e: self._open_url("lan"))
+
+        # ── 3. Primary Action Buttons ────────────────────────────────────────
+        btn_grid = tk.Frame(root_frame, bg=BG)
+        btn_grid.pack(fill="x", pady=(0, 14))
+
+        # Row 1: Start / Stop
+        row1 = tk.Frame(btn_grid, bg=BG)
+        row1.pack(fill="x", pady=(0, 6))
+
+        self.start_btn = ttk.Button(row1, text="▶  Démarrer le Serveur",
                                     style="Start.TButton",
                                     command=self.start_services)
-        self.start_btn.pack(side="left", expand=True, fill="x", padx=(0, 6))
+        self.start_btn.pack(side="left", expand=True, fill="x", padx=(0, 4))
 
-        self.stop_btn = ttk.Button(btn_row, text="■  Stop Server",
+        self.stop_btn = ttk.Button(row1, text="■  Arrêter le Serveur",
                                    style="Stop.TButton",
                                    command=self.stop_services,
                                    state=tk.DISABLED)
-        self.stop_btn.pack(side="left", expand=True, fill="x", padx=(6, 0))
+        self.stop_btn.pack(side="left", expand=True, fill="x", padx=(4, 0))
 
-        # Activity log
-        tk.Label(root_frame, text="ACTIVITY LOG", font=(FONT, 8, "bold"),
-                 bg=BG, fg=TEXT_DIM).pack(anchor="w")
+        # Row 2: Open browser / QR Code modal
+        row2 = tk.Frame(btn_grid, bg=BG)
+        row2.pack(fill="x")
 
-        log_frame = tk.Frame(root_frame, bg=PANEL_ALT)
-        log_frame.pack(fill="both", expand=True, pady=(4, 0))
+        self.open_btn = ttk.Button(row2, text="🌐  Ouvrir l'Application",
+                                   style="Open.TButton",
+                                   command=lambda: self._open_url("local"),
+                                   state=tk.DISABLED)
+        self.open_btn.pack(side="left", expand=True, fill="x", padx=(0, 4))
+
+        self.qr_btn = ttk.Button(row2, text="📱  Accès Réseau (QR Code)",
+                                 style="Qr.TButton",
+                                 command=self.show_lan_qr_modal,
+                                 state=tk.DISABLED)
+        self.qr_btn.pack(side="left", expand=True, fill="x", padx=(4, 0))
+
+        # ── 4. Activity Log ──────────────────────────────────────────────────
+        log_header_frame = tk.Frame(root_frame, bg=BG)
+        log_header_frame.pack(fill="x", pady=(0, 4))
+
+        tk.Label(log_header_frame, text="JOURNAL D'ACTIVITÉ", font=(FONT, 8, "bold"),
+                 bg=BG, fg=TEXT_DIM).pack(side="left")
+
+        clear_btn = tk.Button(
+            log_header_frame, text="Effacer", font=(FONT, 8),
+            bg=BG, fg=TEXT_DIM, activebackground=BG,
+            activeforeground=TEXT_MAIN, bd=0, cursor="hand2",
+            command=self._clear_log,
+        )
+        clear_btn.pack(side="right")
+
+        log_frame = tk.Frame(root_frame, bg=PANEL_ALT,
+                             highlightbackground=CARD_BORDER, highlightthickness=1)
+        log_frame.pack(fill="both", expand=True)
 
         self.log_text = tk.Text(
             log_frame, bg=PANEL_ALT, fg=TEXT_MAIN,
@@ -679,52 +812,209 @@ class ServerApp:
         scrollbar.pack(side="right", fill="y")
         self.log_text.pack(side="left", fill="both", expand=True)
 
-        self._log('Ready. Click "Start Server" to begin.')
+        self._log("Prêt. Cliquez sur 'Démarrer le Serveur' pour commencer.")
 
-    def _open_url(self, event=None):
+    def _open_url(self, target="local"):
         if self._session and self._session.django_port:
-            webbrowser.open(f"http://127.0.0.1:{self._session.django_port}")
+            port = self._session.django_port
+            url = f"http://127.0.0.1:{port}" if target == "local" else f"http://{self.local_ip}:{port}"
+            webbrowser.open(url)
 
     def _draw_dot(self, color):
         self.status_dot.delete("all")
-        self.status_dot.create_oval(2, 2, 12, 12, fill=color, outline="")
+        self.status_dot.create_oval(2, 2, 14, 14, fill=color, outline="")
 
     def _set_status(self, state, session=None):
-        """Update the status card. Main thread only."""
+        """Update the status card and interactive controls. Main thread only."""
         if state == "starting":
             self._draw_dot(AMBER)
-            self.status_label.config(text="Starting…")
-            self.status_sub.config(text="Launching background services")
-            self.url_label.config(text="")
+            self.status_label.config(text="Démarrage en cours…")
+            self.status_sub.config(text="Initialisation des services et ports réseau")
+            self.url_local_label.config(text="")
+            self.url_lan_label.config(text="")
+            self.open_btn.config(state=tk.DISABLED)
+            self.qr_btn.config(state=tk.DISABLED)
         elif state == "running":
             self._draw_dot(GREEN)
-            self.status_label.config(text="Running")
-            self.status_sub.config(text="Server is live")
-            port = session.django_port if session else (self._session.django_port if self._session else None)
-            if port:
-                self.url_label.config(
-                    text=(
-                        f"LOCAL: http://127.0.0.1:{port}\n"
-                        f"LAN:   http://{self.local_ip}:{port}"
-                    )
-                )
-            else:
-                self.url_label.config(text="")
+            self.status_label.config(text="En ligne & Opérationnel")
+            self.status_sub.config(text="Accessible sur cet ordinateur et sur le réseau local")
+            port = session.django_port if session else (self._session.django_port if self._session else 8000)
+            wa_port = session.whatsapp_port if session else (self._session.whatsapp_port if self._session else 3000)
+
+            self.url_local_label.config(text=f"🌐 Local  :  http://127.0.0.1:{port}  (cliquez pour ouvrir)")
+            self.url_lan_label.config(text=f"📱 Réseau :  http://{self.local_ip}:{port}  (Wi-Fi / LAN)")
+
+            self.web_badge.config(text=f"🌐 Web : Port {port}", fg=GREEN)
+            self.wa_badge.config(text=f"💬 WhatsApp : Port {wa_port}", fg=GREEN)
+
+            self.open_btn.config(state=tk.NORMAL)
+            self.qr_btn.config(state=tk.NORMAL)
         elif state == "stopping":
             self._draw_dot(AMBER)
-            self.status_label.config(text="Stopping…")
-            self.status_sub.config(text="Shutting down services")
-            self.url_label.config(text="")
+            self.status_label.config(text="Arrêt en cours…")
+            self.status_sub.config(text="Fermeture des services d'arrière-plan")
+            self.open_btn.config(state=tk.DISABLED)
+            self.qr_btn.config(state=tk.DISABLED)
         elif state == "stopped":
             self._draw_dot(RED)
-            self.status_label.config(text="Stopped")
-            self.status_sub.config(text="Server is not running")
-            self.url_label.config(text="")
+            self.status_label.config(text="Serveur Arrêté")
+            self.status_sub.config(text="Cliquez sur 'Démarrer le Serveur' pour lancer l'application")
+            self.url_local_label.config(text="")
+            self.url_lan_label.config(text="")
+            self.web_badge.config(text="🌐 Web : Arrêté", fg=TEXT_DIM)
+            self.wa_badge.config(text="💬 WhatsApp : Arrêté", fg=TEXT_DIM)
+            self.open_btn.config(state=tk.DISABLED)
+            self.qr_btn.config(state=tk.DISABLED)
         elif state == "error":
             self._draw_dot(RED)
-            self.status_label.config(text="Error")
-            self.status_sub.config(text="Server failed to start — see log")
-            self.url_label.config(text="")
+            self.status_label.config(text="Erreur de Démarrage")
+            self.status_sub.config(text="Échec du démarrage du serveur — consultez le journal ci-dessous")
+            self.open_btn.config(state=tk.DISABLED)
+            self.qr_btn.config(state=tk.DISABLED)
+
+    # =========================================================================
+    # Modal: LAN QR Code for Mobile / Multi-PC Access
+    # =========================================================================
+
+    def show_lan_qr_modal(self):
+        """Display dialog with high-contrast QR Code for mobile and LAN connection."""
+        if not self._session or not self._session.django_port:
+            messagebox.showinfo(
+                "Réseau Local",
+                "Le serveur doit être démarré pour générer le lien et le QR Code d'accès réseau.",
+            )
+            return
+
+        port = self._session.django_port
+        lan_url = f"http://{self.local_ip}:{port}"
+
+        modal = tk.Toplevel(self.root)
+        modal.title(f"{APP_NAME} — Accès Réseau Local (Wi-Fi / LAN)")
+        modal.geometry("440x560")
+        modal.minsize(420, 520)
+        modal.configure(bg=BG)
+        modal.transient(self.root)
+        modal.grab_set()
+
+        # Center on parent window
+        try:
+            modal.update_idletasks()
+            x = self.root.winfo_x() + (self.root.winfo_width() // 2) - 220
+            y = self.root.winfo_y() + (self.root.winfo_height() // 2) - 280
+            modal.geometry(f"+{max(0, x)}+{max(0, y)}")
+        except Exception:
+            pass
+
+        container = tk.Frame(modal, bg=BG, padx=20, pady=16)
+        container.pack(fill="both", expand=True)
+
+        tk.Label(
+            container, text="📱 Connexion Mobile & Tablettes",
+            font=(FONT, 13, "bold"), bg=BG, fg=TEXT_MAIN,
+        ).pack(pady=(0, 2))
+
+        tk.Label(
+            container,
+            text="Scannez ce QR Code pour ouvrir l'application sur un autre appareil\n(connecté au même réseau Wi-Fi).",
+            font=(FONT, 9), bg=BG, fg=TEXT_DIM, justify="center",
+        ).pack(pady=(0, 14))
+
+        # QR Code Canvas
+        matrix = _generate_qr_matrix(lan_url)
+        canvas_size = 230
+        qr_canvas = tk.Canvas(
+            container, width=canvas_size, height=canvas_size,
+            bg="#ffffff", highlightthickness=0, relief="flat",
+        )
+        qr_canvas.pack(pady=(0, 14))
+
+        if matrix:
+            n = len(matrix)
+            margin = 15
+            cell = (canvas_size - 2 * margin) / n
+            for r in range(n):
+                for c in range(n):
+                    if matrix[r][c]:
+                        x1 = margin + c * cell
+                        y1 = margin + r * cell
+                        x2 = x1 + cell
+                        y2 = y1 + cell
+                        qr_canvas.create_rectangle(x1, y1, x2, y2, fill="#000000", outline="")
+        else:
+            qr_canvas.create_text(
+                canvas_size // 2, canvas_size // 2,
+                text="QR Code non disponible\n(Module qrcode manquant)",
+                fill="#333333", font=(FONT, 10), justify="center",
+            )
+
+        # Address Box
+        addr_card = tk.Frame(container, bg=PANEL, padx=12, pady=8,
+                             highlightbackground=CARD_BORDER, highlightthickness=1)
+        addr_card.pack(fill="x", pady=(0, 10))
+
+        tk.Label(
+            addr_card, text="Adresse Web sur le réseau :",
+            font=(FONT, 8), bg=PANEL, fg=TEXT_DIM,
+        ).pack(anchor="w")
+
+        url_entry = tk.Entry(
+            addr_card, font=("Consolas", 10, "bold"),
+            bg=PANEL_ALT, fg=ACCENT, relief="flat", bd=0, justify="center",
+        )
+        url_entry.insert(0, lan_url)
+        url_entry.configure(state="readonly")
+        url_entry.pack(fill="x", pady=(4, 0))
+
+        # Buttons row
+        btn_frame = tk.Frame(container, bg=BG)
+        btn_frame.pack(fill="x", pady=(0, 10))
+
+        def _copy_link(btn):
+            self.root.clipboard_clear()
+            self.root.clipboard_append(lan_url)
+            btn.config(text="✓ Adresse copiée !", bg=GREEN)
+            self.root.after(2000, lambda: btn.config(text="📋 Copier le lien", bg=PANEL))
+
+        copy_btn = tk.Button(
+            btn_frame, text="📋 Copier le lien", font=(FONT, 9, "bold"),
+            bg=PANEL, fg=TEXT_MAIN, activebackground=CARD_BORDER,
+            activeforeground=TEXT_MAIN, bd=0, padx=12, pady=6,
+            cursor="hand2", command=lambda: _copy_link(copy_btn),
+        )
+        copy_btn.pack(side="left", expand=True, fill="x", padx=(0, 4))
+
+        def _setup_firewall():
+            try:
+                cmd = f'netsh advfirewall firewall add rule name="School ERP Web (Port {port})" dir=in action=allow protocol=TCP localport={port}'
+                res = subprocess.run(cmd, shell=True, capture_output=True, text=True)
+                if res.returncode == 0:
+                    messagebox.showinfo(
+                        "Pare-feu Windows",
+                        f"Port {port} débloqué dans le Pare-feu Windows !\nLes autres ordinateurs et téléphones du réseau Wi-Fi peuvent maintenant se connecter.",
+                    )
+                else:
+                    messagebox.showwarning(
+                        "Pare-feu Windows",
+                        "Impossible de modifier le pare-feu automatiquement.\nVeuillez exécuter ce lanceur en mode Administrateur.",
+                    )
+            except Exception as e:
+                messagebox.showerror("Erreur", str(e))
+
+        fw_btn = tk.Button(
+            btn_frame, text="🛡️ Débloquer Pare-feu", font=(FONT, 9),
+            bg=PANEL, fg=TEXT_DIM, activebackground=CARD_BORDER,
+            activeforeground=TEXT_MAIN, bd=0, padx=10, pady=6,
+            cursor="hand2", command=_setup_firewall,
+        )
+        fw_btn.pack(side="left", expand=True, fill="x", padx=(4, 0))
+
+        close_btn = tk.Button(
+            container, text="Fermer", font=(FONT, 9),
+            bg=BG, fg=TEXT_DIM, activebackground=BG,
+            activeforeground=TEXT_MAIN, bd=0, cursor="hand2",
+            command=modal.destroy,
+        )
+        close_btn.pack()
 
     # =========================================================================
     # WhatsApp health check
@@ -927,25 +1217,25 @@ class ServerApp:
             return
 
         if reachable:
-            self._thread_log(f"WhatsApp automation service is listening on port {wa_port}.")
+            self._thread_log(f"Service d'automatisation WhatsApp en écoute sur le port {wa_port}.")
             if wa_status == "READY":
-                self._thread_log("WhatsApp client is connected and ready.")
+                self._thread_log("Client WhatsApp connecté et opérationnel.")
+                self.root.after(0, lambda: self.wa_badge.config(text=f"💬 WhatsApp: Port {wa_port} (Prêt)", fg=GREEN))
             elif wa_status in ("QR_RECEIVED", "INITIALIZING", "AUTHENTICATED", "STARTING"):
                 self._thread_log(
-                    f"WhatsApp client status: {wa_status}. "
-                    "Open the dashboard to scan the QR code if prompted."
+                    f"Statut WhatsApp : {wa_status}. "
+                    "Ouvrez le tableau de bord pour scanner le code QR si nécessaire."
                 )
+                self.root.after(0, lambda: self.wa_badge.config(text="💬 WhatsApp: QR Requis", fg=AMBER))
             elif wa_status in ("DISCONNECTED", "ERROR", "AUTHENTICATION_FAILED", "RESTART_WAIT"):
-                self._thread_log(
-                    f"WhatsApp client status: {wa_status}. "
-                    "The dashboard will show more details."
-                )
+                self._thread_log(f"Statut WhatsApp : {wa_status}. Consultez le tableau de bord pour plus de détails.")
+                self.root.after(0, lambda: self.wa_badge.config(text="💬 WhatsApp: Déconnecté", fg=AMBER))
             elif wa_status:
-                self._thread_log(f"WhatsApp client status: {wa_status}.")
+                self._thread_log(f"Statut WhatsApp : {wa_status}.")
         else:
             self._thread_log(
-                "WhatsApp service started but health check timed out "
-                "(Chromium/Puppeteer may still be initializing)."
+                "Le service WhatsApp a démarré mais le test de connexion a expiré "
+                "(Chromium/Puppeteer est peut-être encore en cours d'initialisation)."
             )
 
     # =========================================================================
@@ -957,7 +1247,7 @@ class ServerApp:
         Background thread for Waitress/Django server.
         Session-owned server instance and port binding.
         """
-        self._thread_log("Loading Django & Waitress handlers...")
+        self._thread_log("Chargement de Django & du serveur Waitress...")
 
         try:
             import os
@@ -969,17 +1259,17 @@ class ServerApp:
 
             db_file = get_database_path()
             if not db_file.exists() or db_file.stat().st_size == 0:
-                self._thread_log("Initializing database for first-time launch...")
+                self._thread_log("Initialisation de la base de données pour le premier lancement...")
                 call_command("migrate", interactive=False, verbosity=0)
-                self._thread_log("Database initialized successfully.")
+                self._thread_log("Base de données initialisée avec succès.")
 
             from django.contrib.staticfiles.handlers import StaticFilesHandler
             from school_erp.wsgi import application
             from waitress.server import create_server
         except Exception as exc:
-            self._thread_log(f"ERROR: Failed to load Django/Waitress: {exc}")
+            self._thread_log(f"ERREUR : Échec du chargement de Django/Waitress : {exc}")
             if self._is_valid_session(session):
-                self.root.after(0, lambda exc=exc: self._handle_session_failure(session, f"Django error: {exc}"))
+                self.root.after(0, lambda exc=exc: self._handle_session_failure(session, f"Erreur Django: {exc}"))
             return
 
         if not self._is_valid_session(session):
@@ -999,25 +1289,25 @@ class ServerApp:
             except OSError as exc:
                 msg = str(exc).lower()
                 if "address already in use" in msg or "port is already allocated" in msg:
-                    self._thread_log(f"Django port {session.django_port} was taken. Retrying...")
+                    self._thread_log(f"Port Django {session.django_port} occupé. Nouvelle tentative...")
                     try:
                         new_port = find_free_port(session.django_port + 1)
                         session.django_port = new_port
-                        self._thread_log(f"Waitress port re-selected: {session.django_port}")
+                        self._thread_log(f"Nouveau port sélectionné : {session.django_port}")
                         continue
                     except RuntimeError as port_exc:
-                        self._thread_log(f"ERROR: Could not find available Django port. {port_exc}")
+                        self._thread_log(f"ERREUR : Aucun port disponible pour Django : {port_exc}")
                         if self._is_valid_session(session):
                             self.root.after(0, lambda: self._handle_session_failure(session, str(port_exc)))
                         return
-                self._thread_log(f"ERROR: Waitress failed to bind: {exc}")
+                self._thread_log(f"ERREUR : Échec de liaison Waitress : {exc}")
                 if self._is_valid_session(session):
-                    self.root.after(0, lambda e=exc: self._handle_session_failure(session, f"Waitress bind failed: {e}"))
+                    self.root.after(0, lambda e=exc: self._handle_session_failure(session, f"Échec liaison Waitress: {e}"))
                 return
         else:
-            self._thread_log("ERROR: Django failed to start after multiple port attempts.")
+            self._thread_log("ERREUR : Échec du démarrage de Django après plusieurs tentatives de port.")
             if self._is_valid_session(session):
-                self.root.after(0, lambda: self._handle_session_failure(session, "Port allocation exhausted"))
+                self.root.after(0, lambda: self._handle_session_failure(session, "Épuisement des ports disponibles"))
             return
 
         if not self._is_valid_session(session):
@@ -1043,7 +1333,7 @@ class ServerApp:
                 self.is_running = True
                 self._set_status("running", session)
                 self._log(
-                    f"Django server is listening on {self.local_ip}:{session.django_port} (LAN accessible)."
+                    f"Serveur Django actif sur http://{self.local_ip}:{session.django_port} (accessible sur le réseau local)."
                 )
 
         self.root.after(0, _mark_live)
@@ -1052,7 +1342,7 @@ class ServerApp:
         try:
             server.run()
         except Exception as exc:
-            self._thread_log(f"Waitress server error: {exc}")
+            self._thread_log(f"Erreur du serveur Waitress : {exc}")
         finally:
             def _on_django_exit():
                 if self._is_valid_session(session):
@@ -1068,7 +1358,7 @@ class ServerApp:
     def _handle_session_failure(self, session, message):
         """Called on main thread when a session fails to start."""
         if self._is_valid_session(session):
-            self._log(f"ERROR: {message}")
+            self._log(f"ERREUR : {message}")
             self._set_status("error")
             self._begin_shutdown(destroy_after=False)
 
@@ -1080,7 +1370,7 @@ class ServerApp:
         """Waits on session.server_ready and TCP port check, then opens browser."""
         if not session.server_ready.wait(timeout=30):
             if self._is_valid_session(session):
-                self._thread_log("Timed out waiting for Django to become ready.")
+                self._thread_log("Délai d'attente dépassé pour la préparation de Django.")
             return
 
         if not self._is_valid_session(session):
@@ -1100,7 +1390,7 @@ class ServerApp:
             time.sleep(0.5)
         else:
             if self._is_valid_session(session):
-                self._thread_log("Timed out waiting for Django port to open.")
+                self._thread_log("Délai d'attente dépassé pour l'ouverture du port Django.")
             return
 
         if not self._is_valid_session(session):
@@ -1109,9 +1399,9 @@ class ServerApp:
         url = f"http://127.0.0.1:{session.django_port}"
         try:
             webbrowser.open(url)
-            self._thread_log(f"Opened browser at {url}")
+            self._thread_log(f"Navigateur ouvert avec succès à l'adresse : {url}")
         except Exception as exc:
-            self._thread_log(f"Could not open browser: {exc}")
+            self._thread_log(f"Impossible d'ouvrir le navigateur automatiquement : {exc}")
 
     # =========================================================================
     # Start services
@@ -1130,18 +1420,18 @@ class ServerApp:
         self.start_btn.config(state=tk.DISABLED)
         self.stop_btn.config(state=tk.NORMAL)
         self._set_status("starting")
-        self._log("Starting server…")
+        self._log("Démarrage du serveur en cours…")
 
         try:
             session.django_port = find_free_port(8000)
-            self._log(f"Waitress port selected: {session.django_port}")
+            self._log(f"Port Web Django alloué : {session.django_port}")
             session.whatsapp_port = find_free_port(3000, host="127.0.0.1")
-            self._log(f"WhatsApp service port selected: {session.whatsapp_port}")
+            self._log(f"Port service WhatsApp alloué : {session.whatsapp_port}")
 
             os.environ["WA_PORT"] = str(session.whatsapp_port)
             os.environ["WA_API_KEY"] = self.whatsapp_api_key
         except Exception as exc:
-            self._log(f"ERROR: Could not find available ports: {exc}")
+            self._log(f"ERREUR : Impossible de réserver les ports réseau : {exc}")
             self._set_status("error")
             self._session = None
             self.start_btn.config(state=tk.NORMAL)
@@ -1192,7 +1482,7 @@ class ServerApp:
 
         if not destroy_after:
             self._set_status("stopping")
-            self._log("Stopping server…")
+            self._log("Arrêt des services en cours…")
 
         # Capture and clear active session
         session = self._session
@@ -1206,14 +1496,14 @@ class ServerApp:
             bg_log = self._make_bg_log()
             if session:
                 if session.node_process:
-                    _stop_process_tree(session.node_process, "WhatsApp service", log_fn=bg_log)
+                    _stop_process_tree(session.node_process, "Service WhatsApp", log_fn=bg_log)
                     session.node_process = None
                 if session.server_instance:
                     try:
                         session.server_instance.close()
-                        bg_log("Waitress server closed.")
+                        bg_log("Serveur Waitress arrêté.")
                     except Exception as exc:
-                        bg_log(f"Error closing Waitress: {exc}")
+                        bg_log(f"Erreur lors de la fermeture de Waitress : {exc}")
                     session.server_instance = None
 
             def _finish():
@@ -1248,8 +1538,8 @@ class ServerApp:
 
         if server_running or node_running:
             if not messagebox.askokcancel(
-                "Quit",
-                f"{APP_NAME} services are still running. Stop them and quit?",
+                "Quitter l'application",
+                f"Les services de {APP_NAME} sont actuellement en cours d'exécution.\n\nVoulez-vous les arrêter et fermer l'application ?",
             ):
                 return
 
