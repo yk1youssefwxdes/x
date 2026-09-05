@@ -104,25 +104,32 @@ def session_pre_save_snapshot(sender, instance, **kwargs):
         setattr(instance, _SNAPSHOT_ATTR, None)
 
 
-import threading
+import atexit
+import logging
+from concurrent.futures import ThreadPoolExecutor
 from django.db import connection, transaction
+
+logger = logging.getLogger(__name__)
+
+# Bounded executor to avoid uncontrolled thread explosion and prevent message loss on shutdown
+_notification_executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="wa_notify")
+atexit.register(lambda: _notification_executor.shutdown(wait=True, cancel_futures=False))
 
 
 def _run_async(func, *args, **kwargs):
-    """Run a task asynchronously in a daemon thread, closing the DB connection when finished."""
+    """Schedule a task asynchronously in the bounded worker pool, closing DB connection on completion."""
     def worker():
         try:
             func(*args, **kwargs)
         except Exception:
-            pass
+            logger.exception("Error executing asynchronous WhatsApp notification")
         finally:
             connection.close()
 
-    t = threading.Thread(target=worker, daemon=True)
     try:
-        transaction.on_commit(lambda: t.start())
+        transaction.on_commit(lambda: _notification_executor.submit(worker))
     except Exception:
-        t.start()
+        _notification_executor.submit(worker)
 
 
 def _async_send_session_notifications(session_id: int, now_cancelled: bool, schedule_changes: list, msg_type: str):

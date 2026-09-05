@@ -2,6 +2,10 @@
 {% load static %}
 {% block title %}{{ title }} — {{ SCHOOL_NAME }}{% endblock %}
 
+{% block extra_css %}
+<link rel="stylesheet" href="{% static 'css/schedule_ux.css' %}">
+{% endblock %}
+
 {% block breadcrumb %}
   <span class="context-bar-sep">›</span>
   <a href="{% url 'core:courses_list' %}"><i class="bi bi-book-fill"></i> Groupes</a>
@@ -128,7 +132,7 @@
         <div class="card-header d-flex align-items-center justify-content-between">
           <div class="d-flex align-items-center gap-2">
             <i class="bi bi-calendar3" style="color:#f59e0b;font-size:16px;"></i>
-            <span class="fw-600">Horaires hebdomadaires</span>
+            <span class="fw-600">Horaires hebdomadaires récurrents</span>
             <span class="badge bg-light text-secondary border ms-1" style="font-size:11px;font-weight:500;">Optionnel</span>
           </div>
           <button type="button" class="btn btn-sm btn-outline-primary" id="add-schedule-btn">
@@ -138,62 +142,101 @@
         <div class="card-body">
           {{ formset.management_form }}
           <div id="no-schedules-placeholder" class="text-center py-4 {% if formset.forms %}d-none{% endif %}">
-            <div style="width: 46px; height: 46px; border-radius: 50%; background: var(--surface-alt, #f8fafc); display: inline-flex; align-items: center; justify-content: center; margin-bottom: 0.6rem;">
-              <i class="bi bi-calendar-x" style="font-size: 22px; color: var(--text-secondary, #64748b);"></i>
+            <div style="width: 52px; height: 52px; border-radius: 50%; background: var(--surface-alt, #f8fafc); display: inline-flex; align-items: center; justify-content: center; margin-bottom: 0.6rem;">
+              <i class="bi bi-calendar-x" style="font-size: 24px; color: var(--text-secondary, #64748b);"></i>
             </div>
-            <div style="font-size: 14px; font-weight: 600; color: var(--text-primary, #1e293b);">Aucun horaire hebdomadaire défini</div>
-            <div style="font-size: 13px; color: var(--text-secondary, #64748b); max-width: 420px; margin: 0 auto;">Ce groupe peut être enregistré sans horaire. Si vous souhaitez planifier des créneaux réguliers, cliquez sur « Ajouter créneau ».</div>
+            <div style="font-size: 15px; font-weight: 600; color: var(--text-primary, #1e293b);">Aucun horaire hebdomadaire défini</div>
+            <div style="font-size: 13.5px; color: var(--text-secondary, #64748b); max-width: 440px; margin: 0 auto 1rem auto;">
+              Ce groupe peut être enregistré sans horaire fixe. Si vous souhaitez planifier des créneaux récurrents, cliquez ci-dessous.
+            </div>
+            <button type="button" class="btn btn-outline-primary btn-sm" onclick="document.getElementById('add-schedule-btn').click();">
+              <i class="bi bi-plus-circle"></i> Ajouter un créneau maintenant
+            </button>
           </div>
           <div id="schedules-container">
             {% for f in formset %}
-              <div class="row g-3 align-items-end schedule-form-row mb-3 pb-3" style="border-bottom:1px solid var(--border);"
-                   data-form-index="{{ forloop.counter0 }}">
+              <div class="sch-slot-card schedule-form-row" data-form-index="{{ forloop.counter0 }}">
                 {% for hidden in f.hidden_fields %}{{ hidden }}{% endfor %}
 
-                <div class="col-md-3">
-                  <label class="form-label">Jour <span style="color:var(--danger);">*</span></label>
-                  {{ f.day }}
-                  {% if f.day.errors %}<div class="invalid-feedback d-block">{% for e in f.day.errors %}{{ e }}{% endfor %}</div>{% endif %}
+                <div class="sch-slot-header">
+                  <div class="d-flex align-items-center gap-2">
+                    <span class="sch-slot-number-badge">{{ forloop.counter }}</span>
+                    <span class="fw-bold text-dark" style="font-size: 0.9rem;">Créneau #{{ forloop.counter }}</span>
+                    <span class="sch-duration-pill duration-preview-badge">
+                      <i class="bi bi-clock-history"></i> <span class="duration-text">--</span>
+                    </span>
+                  </div>
+                  <div>
+                    {% if formset.can_delete %}
+                      <div class="form-check d-none">{{ f.DELETE }}</div>
+                      <button type="button" class="btn btn-outline-danger btn-sm remove-schedule-btn"
+                        title="Supprimer ce créneau"
+                        aria-label="Supprimer ce créneau horaire">
+                        <i class="bi bi-trash" aria-hidden="true"></i>
+                        <span class="d-none d-sm-inline ms-1">Supprimer</span>
+                      </button>
+                    {% endif %}
+                  </div>
                 </div>
 
-                <div class="col-md-3">
-                  <label class="form-label">Début <span style="color:var(--danger);">*</span></label>
-                  {{ f.start_time }}
-                  {% if f.start_time.errors %}<div class="invalid-feedback d-block">{% for e in f.start_time.errors %}{{ e }}{% endfor %}</div>{% endif %}
-                </div>
+                <div class="row g-3">
+                  <div class="col-lg-5 col-md-12">
+                    <label class="form-label fw-semibold text-secondary" style="font-size: 0.825rem;">
+                      <i class="bi bi-calendar-event me-1 text-primary"></i>Jour <span style="color:var(--danger);">*</span>
+                    </label>
+                    {{ f.day }}
+                    {% if f.day.errors %}<div class="invalid-feedback d-block">{% for e in f.day.errors %}{{ e }}{% endfor %}</div>{% endif %}
+                  </div>
 
-                <div class="col-md-3">
-                  <label class="form-label">Fin <span style="color:var(--danger);">*</span></label>
-                  {{ f.end_time }}
-                  {% if f.end_time.errors %}<div class="invalid-feedback d-block">{% for e in f.end_time.errors %}{{ e }}{% endfor %}</div>{% endif %}
-                </div>
+                  <div class="col-lg-4 col-md-7">
+                    <div class="row g-2">
+                      <div class="col-6">
+                        <label class="form-label fw-semibold text-secondary" style="font-size: 0.825rem;">
+                          <i class="bi bi-clock me-1 text-primary"></i>Début <span style="color:var(--danger);">*</span>
+                        </label>
+                        {{ f.start_time }}
+                        {% if f.start_time.errors %}<div class="invalid-feedback d-block">{% for e in f.start_time.errors %}{{ e }}{% endfor %}</div>{% endif %}
+                      </div>
+                      <div class="col-6">
+                        <label class="form-label fw-semibold text-secondary" style="font-size: 0.825rem;">
+                          <i class="bi bi-clock-fill me-1 text-primary"></i>Fin <span style="color:var(--danger);">*</span>
+                        </label>
+                        {{ f.end_time }}
+                        {% if f.end_time.errors %}<div class="invalid-feedback d-block">{% for e in f.end_time.errors %}{{ e }}{% endfor %}</div>{% endif %}
+                      </div>
+                    </div>
+                  </div>
 
-                <div class="col-md-2">
-                  <label class="form-label">Salle <span style="color:var(--danger);">*</span></label>
-                  {{ f.room }}
-                  {% if f.room.errors %}<div class="invalid-feedback d-block">{% for e in f.room.errors %}{{ e }}{% endfor %}</div>{% endif %}
-                </div>
+                  <div class="col-lg-3 col-md-5">
+                    <label class="form-label fw-semibold text-secondary" style="font-size: 0.825rem;">
+                      <i class="bi bi-door-open me-1 text-primary"></i>Salle <span style="color:var(--danger);">*</span>
+                    </label>
+                    <div class="d-flex align-items-center gap-1">
+                      {{ f.room }}
+                      <button type="button" class="btn btn-outline-success btn-sm flex-shrink-0 open-quick-add-room-btn"
+                              title="Ajouter une nouvelle salle" style="white-space:nowrap;">
+                        <i class="bi bi-plus-circle"></i>
+                      </button>
+                    </div>
+                    {% if f.room.errors %}<div class="invalid-feedback d-block">{% for e in f.room.errors %}{{ e }}{% endfor %}</div>{% endif %}
+                  </div>
 
-                <div class="col-md-1 text-end">
-                  {% if formset.can_delete %}
-                    <div class="form-check d-none">{{ f.DELETE }}</div>
-                    <button type="button" class="btn btn-outline-danger btn-sm remove-schedule-btn"
-                      title="Supprimer ce créneau"
-                      aria-label="Supprimer ce créneau horaire">
-                      <i class="bi bi-trash" aria-hidden="true"></i>
-                      <span class="visually-hidden">Supprimer</span>
-                    </button>
-                  {% endif %}
-                </div>
-
-                <!-- Conflict alert per row -->
-                <div class="col-12 row-conflict-alert alert alert-warning d-none mb-0" style="font-size:14px;font-weight:500;" role="alert"><!-- ↑ 13px → 14px+500 — WCAG AA -->
-                  <i class="bi bi-exclamation-triangle-fill me-2"></i>
-                  <span class="alert-text"></span>
+                  <!-- Conflict alert per row -->
+                  <div class="col-12 row-conflict-alert sch-conflict-alert-box d-none" role="alert">
+                    <i class="bi bi-exclamation-triangle-fill text-danger flex-shrink-0" style="font-size: 1.1rem;"></i>
+                    <div>
+                      <strong class="d-block mb-1">Conflit détecté :</strong>
+                      <span class="alert-text"></span>
+                    </div>
+                  </div>
                 </div>
               </div>
             {% endfor %}
           </div>
+
+          <button type="button" class="sch-add-slot-dashed mt-3" id="add-schedule-btn-dashed">
+            <i class="bi bi-plus-circle-fill"></i> Ajouter un créneau hebdomadaire
+          </button>
         </div>
       </div>
 
@@ -337,35 +380,155 @@
   to   { opacity:1; transform:translateY(0)      scale(1);   }
 }
 #quick-add-teacher-overlay.qat-open { display:flex !important; }
+#quick-add-room-overlay.qar-open    { display:flex !important; }
 </style>
+
+<!-- ============================================================
+     Room Quick-Add Modal
+     ============================================================ -->
+<div id="quick-add-room-overlay" role="dialog" aria-modal="true" aria-labelledby="qar-modal-title"
+     style="display:none;position:fixed;inset:0;z-index:9999;
+            background:rgba(0,0,0,.45);backdrop-filter:blur(3px);
+            align-items:center;justify-content:center;padding:1rem;">
+
+  <div id="quick-add-room-modal"
+       style="background:var(--bg-card,#fff);border-radius:14px;box-shadow:0 20px 60px rgba(0,0,0,.25);
+              width:100%;max-width:480px;max-height:90vh;overflow-y:auto;
+              animation:qatSlideIn .22s ease;">
+
+    <!-- Header -->
+    <div style="display:flex;align-items:center;justify-content:space-between;
+                padding:1.1rem 1.4rem;border-bottom:1px solid var(--border,#e5e7eb);">
+      <div style="display:flex;align-items:center;gap:.6rem;">
+        <div style="width:36px;height:36px;border-radius:8px;
+                    background:linear-gradient(135deg,#10b981,#059669);
+                    display:flex;align-items:center;justify-content:center;">
+          <i class="bi bi-door-open-fill" style="color:#fff;font-size:16px;"></i>
+        </div>
+        <span id="qar-modal-title" style="font-weight:700;font-size:1rem;color:var(--text-primary,#0f172a);">Nouvelle salle</span>
+      </div>
+      <button type="button" id="close-quick-add-room" aria-label="Fermer"
+              style="background:none;border:none;cursor:pointer;font-size:1.3rem;
+                     color:var(--text-secondary);line-height:1;padding:.25rem;min-width:44px;min-height:44px;">
+        <i class="bi bi-x-lg"></i>
+      </button>
+    </div>
+
+    <!-- Body -->
+    <div style="padding:1.25rem 1.4rem;">
+      <div id="qar-alert" class="alert alert-danger mb-3" style="display:none;font-size:.85rem;"></div>
+
+      <!-- Name -->
+      <div class="mb-3">
+        <label for="qar-name" class="form-label">Nom de la salle <span style="color:var(--danger);">*</span></label>
+        <input id="qar-name" name="qar_name" type="text" class="form-control" placeholder="ex: Salle A1" autocomplete="off">
+        <div id="qar-name-err" class="invalid-feedback"></div>
+      </div>
+
+      <!-- Capacity -->
+      <div class="mb-3">
+        <label for="qar-capacity" class="form-label">Capacité <span style="color:var(--danger);">*</span></label>
+        <div class="input-group">
+          <input id="qar-capacity" name="qar_capacity" type="number" class="form-control" min="1" placeholder="ex: 30">
+          <span class="input-group-text">places</span>
+        </div>
+        <div id="qar-capacity-err" class="invalid-feedback"></div>
+      </div>
+
+      <!-- Building + Floor -->
+      <div class="row g-3">
+        <div class="col-md-7">
+          <label for="qar-building" class="form-label">Bâtiment</label>
+          <input id="qar-building" name="qar_building" type="text" class="form-control" placeholder="ex: Bâtiment B (optionnel)" autocomplete="off">
+        </div>
+        <div class="col-md-5">
+          <label for="qar-floor" class="form-label">Étage</label>
+          <input id="qar-floor" name="qar_floor" type="number" class="form-control" placeholder="ex: 2">
+          <div id="qar-floor-err" class="invalid-feedback"></div>
+        </div>
+      </div>
+    </div><!-- /body -->
+
+    <!-- Footer -->
+    <div style="display:flex;justify-content:flex-end;gap:.6rem;
+                padding:1rem 1.4rem;border-top:1px solid var(--border,#e5e7eb);">
+      <button type="button" id="qar-cancel" class="btn btn-outline-secondary">Annuler</button>
+      <button type="button" id="qar-submit" class="btn btn-success">
+        <i class="bi bi-check-lg"></i> Enregistrer
+      </button>
+    </div>
+  </div>
+</div>
 
 <!-- Empty form template (hidden) -->
 <div id="empty-form-template" class="d-none">
-  <div class="row g-3 align-items-end schedule-form-row mb-3 pb-3" style="border-bottom:1px solid var(--border);" data-form-index="__prefix__">
+  <div class="sch-slot-card schedule-form-row" data-form-index="__prefix__">
     {% for hidden in formset.empty_form.hidden_fields %}{{ hidden }}{% endfor %}
-    <div class="col-md-3">
-      <label class="form-label">Jour <span style="color:var(--danger);">*</span></label>
-      {{ formset.empty_form.day }}
+    <div class="sch-slot-header">
+      <div class="d-flex align-items-center gap-2">
+        <span class="sch-slot-number-badge">#</span>
+        <span class="fw-bold text-dark" style="font-size: 0.9rem;">Nouveau créneau</span>
+        <span class="sch-duration-pill duration-preview-badge">
+          <i class="bi bi-clock-history"></i> <span class="duration-text">--</span>
+        </span>
+      </div>
+      <div>
+        <button type="button" class="btn btn-outline-danger btn-sm remove-schedule-btn" title="Supprimer" aria-label="Supprimer ce créneau horaire">
+          <i class="bi bi-trash"></i> <span class="d-none d-sm-inline ms-1">Supprimer</span>
+        </button>
+      </div>
     </div>
-    <div class="col-md-3">
-      <label class="form-label">Début <span style="color:var(--danger);">*</span></label>
-      {{ formset.empty_form.start_time }}
-    </div>
-    <div class="col-md-3">
-      <label class="form-label">Fin <span style="color:var(--danger);">*</span></label>
-      {{ formset.empty_form.end_time }}
-    </div>
-    <div class="col-md-2">
-      <label class="form-label">Salle <span style="color:var(--danger);">*</span></label>
-      {{ formset.empty_form.room }}
-    </div>
-    <div class="col-md-1 text-end">
-      <button type="button" class="btn btn-outline-danger btn-sm remove-schedule-btn" title="Supprimer" aria-label="Supprimer ce créneau horaire">
-        <i class="bi bi-trash"></i>
-      </button>
-    </div>
-    <div class="col-12 row-conflict-alert alert alert-warning d-none mb-0" style="font-size:13px;">
-      <i class="bi bi-exclamation-triangle-fill me-2"></i><span class="alert-text"></span>
+    <div class="row g-3">
+      <div class="col-lg-5 col-md-12">
+        <label class="form-label fw-semibold text-secondary" style="font-size: 0.825rem;">
+          <i class="bi bi-calendar-event me-1 text-primary"></i>Jour <span style="color:var(--danger);">*</span>
+        </label>
+        <!-- <div class="sch-day-pills mb-2" data-target-select="schedules-__prefix__-day">
+          <button type="button" class="sch-day-pill-btn" data-day="MON">Lun</button>
+          <button type="button" class="sch-day-pill-btn" data-day="TUE">Mar</button>
+          <button type="button" class="sch-day-pill-btn" data-day="WED">Mer</button>
+          <button type="button" class="sch-day-pill-btn" data-day="THU">Jeu</button>
+          <button type="button" class="sch-day-pill-btn" data-day="FRI">Ven</button>
+          <button type="button" class="sch-day-pill-btn" data-day="SAT">Sam</button>
+          <button type="button" class="sch-day-pill-btn" data-day="SUN">Dim</button>
+        </div> -->
+        {{ formset.empty_form.day }}
+      </div>
+      <div class="col-lg-4 col-md-7">
+        <div class="row g-2">
+          <div class="col-6">
+            <label class="form-label fw-semibold text-secondary" style="font-size: 0.825rem;">
+              <i class="bi bi-clock me-1 text-primary"></i>Début <span style="color:var(--danger);">*</span>
+            </label>
+            {{ formset.empty_form.start_time }}
+          </div>
+          <div class="col-6">
+            <label class="form-label fw-semibold text-secondary" style="font-size: 0.825rem;">
+              <i class="bi bi-clock-fill me-1 text-primary"></i>Fin <span style="color:var(--danger);">*</span>
+            </label>
+            {{ formset.empty_form.end_time }}
+          </div>
+        </div>
+      </div>
+      <div class="col-lg-3 col-md-5">
+        <label class="form-label fw-semibold text-secondary" style="font-size: 0.825rem;">
+          <i class="bi bi-door-open me-1 text-primary"></i>Salle <span style="color:var(--danger);">*</span>
+        </label>
+        <div class="d-flex align-items-center gap-1">
+          {{ formset.empty_form.room }}
+          <button type="button" class="btn btn-outline-success btn-sm flex-shrink-0 open-quick-add-room-btn"
+                  title="Ajouter une nouvelle salle" style="white-space:nowrap;">
+            <i class="bi bi-plus-circle"></i>
+          </button>
+        </div>
+      </div>
+      <div class="col-12 row-conflict-alert sch-conflict-alert-box d-none" role="alert">
+        <i class="bi bi-exclamation-triangle-fill text-danger flex-shrink-0" style="font-size: 1.1rem;"></i>
+        <div>
+          <strong class="d-block mb-1">Conflit détecté :</strong>
+          <span class="alert-text"></span>
+        </div>
+      </div>
     </div>
   </div>
 </div>
@@ -380,10 +543,26 @@ document.addEventListener('DOMContentLoaded', function () {
   const container = document.getElementById('schedules-container');
   const emptyPlaceholder = document.getElementById('no-schedules-placeholder');
   const addBtn = document.getElementById('add-schedule-btn');
+  const addBtnDashed = document.getElementById('add-schedule-btn-dashed');
   const totalFormsInput = document.getElementById('id_schedules-TOTAL_FORMS');
   const emptyTemplate = document.getElementById('empty-form-template').innerHTML;
   const teacherSelect = document.getElementById('id_teacher');
   const courseId = "{% if course %}{{ course.id }}{% endif %}";
+
+  function renumberSlots() {
+    const rows = container.querySelectorAll('.schedule-form-row');
+    let visibleIndex = 1;
+    rows.forEach(r => {
+      const isDeleted = r.style.opacity === '0.4' || r.querySelector('input[name$="-DELETE"]:checked');
+      if (!isDeleted) {
+        const badge = r.querySelector('.sch-slot-number-badge');
+        const title = r.querySelector('.sch-slot-header .fw-bold');
+        if (badge) badge.innerText = visibleIndex;
+        if (title) title.innerText = `Créneau #${visibleIndex}`;
+        visibleIndex++;
+      }
+    });
+  }
 
   function updateEmptyState() {
     if (!emptyPlaceholder) return;
@@ -398,6 +577,68 @@ document.addEventListener('DOMContentLoaded', function () {
     } else {
       emptyPlaceholder.classList.add('d-none');
     }
+    renumberSlots();
+  }
+
+  function updateDurationBadge(row) {
+    const idx = row.getAttribute('data-form-index');
+    const startInput = row.querySelector(`[name="schedules-${idx}-start_time"]`);
+    const endInput = row.querySelector(`[name="schedules-${idx}-end_time"]`);
+    const badge = row.querySelector('.duration-preview-badge');
+    const textEl = row.querySelector('.duration-text');
+    if (!startInput || !endInput || !badge || !textEl) return;
+
+    const startVal = startInput.value;
+    const endVal = endInput.value;
+    if (startVal && endVal && startVal < endVal) {
+      const [sh, sm] = startVal.split(':').map(Number);
+      const [eh, em] = endVal.split(':').map(Number);
+      const totalMinutes = (eh * 60 + em) - (sh * 60 + sm);
+      const hours = Math.floor(totalMinutes / 60);
+      const mins = totalMinutes % 60;
+      let durStr = '';
+      if (hours > 0) durStr += `${hours}h`;
+      if (mins > 0) durStr += (hours > 0 ? ` ${mins}m` : `${mins} min`);
+      textEl.innerText = durStr;
+      badge.classList.add('active');
+    } else {
+      textEl.innerText = '--';
+      badge.classList.remove('active');
+    }
+  }
+
+  function syncDayPills(row) {
+    const idx = row.getAttribute('data-form-index');
+    const daySelect = row.querySelector(`[name="schedules-${idx}-day"]`);
+    const pillsContainer = row.querySelector('.sch-day-pills');
+    if (!daySelect || !pillsContainer) return;
+
+    const currentVal = daySelect.value;
+    pillsContainer.querySelectorAll('.sch-day-pill-btn').forEach(btn => {
+      if (btn.getAttribute('data-day') === currentVal) {
+        btn.classList.add('active');
+      } else {
+        btn.classList.remove('active');
+      }
+    });
+  }
+
+  function setupDayPills(row) {
+    const idx = row.getAttribute('data-form-index');
+    const daySelect = row.querySelector(`[name="schedules-${idx}-day"]`);
+    const pillsContainer = row.querySelector('.sch-day-pills');
+    if (!daySelect || !pillsContainer) return;
+
+    pillsContainer.querySelectorAll('.sch-day-pill-btn').forEach(btn => {
+      btn.onclick = function (e) {
+        e.preventDefault();
+        const chosenDay = btn.getAttribute('data-day');
+        daySelect.value = chosenDay;
+        daySelect.dispatchEvent(new Event('change'));
+        syncDayPills(row);
+      };
+    });
+    syncDayPills(row);
   }
 
   function checkRowConflict(row) {
@@ -432,8 +673,14 @@ document.addEventListener('DOMContentLoaded', function () {
   }
 
   function bindRowListeners(row) {
-    row.querySelectorAll('input, select').forEach(f => f.addEventListener('change', () => checkRowConflict(row)));
+    row.querySelectorAll('input, select').forEach(f => f.addEventListener('change', () => {
+      updateDurationBadge(row);
+      syncDayPills(row);
+      checkRowConflict(row);
+    }));
     teacherSelect?.addEventListener('change', () => checkRowConflict(row));
+    setupDayPills(row);
+    updateDurationBadge(row);
   }
 
   function bindDeleteBtn(btn) {
@@ -455,13 +702,15 @@ document.addEventListener('DOMContentLoaded', function () {
             if (el.id) el.id = el.id.replace(/schedules-\d+/, `schedules-${i}`);
             if (el.name) el.name = el.name.replace(/schedules-\d+/, `schedules-${i}`);
           });
+          const pills = r.querySelector('.sch-day-pills');
+          if (pills) pills.setAttribute('data-target-select', `schedules-${i}-day`);
         });
       }
       updateEmptyState();
     });
   }
 
-  addBtn.addEventListener('click', function () {
+  function addNewSlot() {
     const count = parseInt(totalFormsInput.value);
     const html = emptyTemplate.replace(/__prefix__/g, count).replace(/schedules-__prefix__/g, `schedules-${count}`);
     const div = document.createElement('div');
@@ -472,7 +721,10 @@ document.addEventListener('DOMContentLoaded', function () {
     bindDeleteBtn(row.querySelector('.remove-schedule-btn'));
     bindRowListeners(row);
     updateEmptyState();
-  });
+  }
+
+  if (addBtn) addBtn.addEventListener('click', addNewSlot);
+  if (addBtnDashed) addBtnDashed.addEventListener('click', addNewSlot);
 
   container.querySelectorAll('.schedule-form-row').forEach(row => {
     const btn = row.querySelector('.remove-schedule-btn');
@@ -621,6 +873,145 @@ document.addEventListener('DOMContentLoaded', function () {
       submitBtn.disabled = false;
       submitBtn.innerHTML = '<i class="bi bi-check-lg"></i> Enregistrer';
     });
+  });
+}());
+
+// ──────────────────────────────────────────────
+// Room Quick-Add popup
+// ──────────────────────────────────────────────
+(function () {
+  const overlay   = document.getElementById('quick-add-room-overlay');
+  const closeBtn  = document.getElementById('close-quick-add-room');
+  const cancelBtn = document.getElementById('qar-cancel');
+  const submitBtn = document.getElementById('qar-submit');
+  const alertBox  = document.getElementById('qar-alert');
+
+  // Which room <select> triggered the modal (so we can auto-select after save)
+  let _targetSelect = null;
+
+  function openRoomModal(targetSelect) {
+    _targetSelect = targetSelect || null;
+    overlay.classList.add('qar-open');
+    document.body.style.overflow = 'hidden';
+    document.getElementById('qar-name').focus();
+  }
+
+  function closeRoomModal() {
+    overlay.classList.remove('qar-open');
+    document.body.style.overflow = '';
+    clearRoomErrors();
+    alertBox.style.display = 'none';
+    // Reset inputs
+    ['qar-name','qar-capacity','qar-building','qar-floor'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.value = '';
+    });
+    _targetSelect = null;
+  }
+
+  function clearRoomErrors() {
+    ['qar-name','qar-capacity','qar-floor'].forEach(errId => {
+      const errEl = document.getElementById(errId + '-err');
+      if (errEl) errEl.textContent = '';
+    });
+    document.querySelectorAll('#quick-add-room-modal .form-control')
+      .forEach(el => el.classList.remove('is-invalid'));
+  }
+
+  function showRoomFieldError(fieldKey, msg) {
+    const map = {
+      name:     ['qar-name',     'qar-name-err'],
+      capacity: ['qar-capacity', 'qar-capacity-err'],
+      floor:    ['qar-floor',    'qar-floor-err'],
+    };
+    const pair = map[fieldKey];
+    if (!pair) return;
+    const inputEl = document.getElementById(pair[0]);
+    const errEl   = document.getElementById(pair[1]);
+    if (inputEl) inputEl.classList.add('is-invalid');
+    if (errEl)   errEl.textContent = msg.replace(/^\*\s*/, '');
+  }
+
+  // Inject the new room option into ALL room selects on the page
+  function injectRoomIntoAllSelects(id, label, targetSelect) {
+    document.querySelectorAll('select[name$="-room"]').forEach(sel => {
+      const opt = document.createElement('option');
+      opt.value = id;
+      opt.textContent = label;
+      sel.appendChild(opt);
+      if (sel === targetSelect) {
+        // Auto-select only in the triggering dropdown
+        Array.from(sel.options).forEach(o => { o.selected = (o === opt); });
+        sel.dispatchEvent(new Event('change'));
+      }
+    });
+  }
+
+  closeBtn.addEventListener('click', closeRoomModal);
+  cancelBtn.addEventListener('click', closeRoomModal);
+  overlay.addEventListener('click', function (e) {
+    if (e.target === overlay) closeRoomModal();
+  });
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape' && overlay.classList.contains('qar-open')) closeRoomModal();
+  });
+
+  submitBtn.addEventListener('click', function () {
+    clearRoomErrors();
+    alertBox.style.display = 'none';
+
+    const body = new URLSearchParams({
+      csrfmiddlewaretoken: '{{ csrf_token }}',
+      name:     document.getElementById('qar-name').value.trim(),
+      capacity: document.getElementById('qar-capacity').value.trim(),
+      building: document.getElementById('qar-building').value.trim(),
+      floor:    document.getElementById('qar-floor').value.trim(),
+    });
+
+    submitBtn.disabled = true;
+    submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-1" role="status"></span> Enregistrement…';
+
+    fetch('{% url "core:room_quick_add" %}', {
+      method: 'POST',
+      headers: { 'X-CSRFToken': '{{ csrf_token }}', 'X-Requested-With': 'XMLHttpRequest' },
+      body: body,
+    })
+    .then(r => r.json().then(data => ({ ok: r.ok, data })))
+    .then(({ ok, data }) => {
+      if (ok && data.success) {
+        injectRoomIntoAllSelects(data.id, data.label, _targetSelect);
+        closeRoomModal();
+      } else {
+        if (data.errors) {
+          Object.entries(data.errors).forEach(([k, v]) => showRoomFieldError(k, v));
+          const msgs = Object.values(data.errors).map(m => m.replace(/^\*\s*/, '')).join(' — ');
+          alertBox.textContent = msgs;
+          alertBox.style.display = 'block';
+        } else {
+          alertBox.textContent = 'Une erreur est survenue. Veuillez réessayer.';
+          alertBox.style.display = 'block';
+        }
+      }
+    })
+    .catch(() => {
+      alertBox.textContent = 'Erreur réseau. Veuillez réessayer.';
+      alertBox.style.display = 'block';
+    })
+    .finally(() => {
+      submitBtn.disabled = false;
+      submitBtn.innerHTML = '<i class="bi bi-check-lg"></i> Enregistrer';
+    });
+  });
+
+  // Delegate click for all ".open-quick-add-room-btn" buttons
+  // (handles both pre-rendered rows AND dynamically added rows)
+  document.addEventListener('click', function (e) {
+    const btn = e.target.closest('.open-quick-add-room-btn');
+    if (!btn) return;
+    // Find the closest room select sibling
+    const wrapper = btn.closest('.d-flex');
+    const roomSel = wrapper ? wrapper.querySelector('select[name$="-room"]') : null;
+    openRoomModal(roomSel);
   });
 }());
 </script>

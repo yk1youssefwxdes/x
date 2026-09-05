@@ -1,5 +1,10 @@
 {% extends 'core/base.html' %}
+{% load static %}
 {% block title %}Groupes de cours — {{ SCHOOL_NAME }}{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{% static 'css/schedule_ux.css' %}">
+{% endblock %}
 
 {% block breadcrumb %}
   <span class="context-bar-sep">›</span>
@@ -78,21 +83,35 @@
             <!-- Schedules -->
             {% if course.schedules.all %}
               <div class="mb-3">
-                <div class="form-label mb-2"><i class="bi bi-clock me-1"></i>Horaires</div>
+                <div class="d-flex justify-content-between align-items-center mb-1">
+                  <span class="form-label mb-0" style="font-size: 0.775rem;"><i class="bi bi-clock me-1 text-primary"></i>Horaires</span>
+                  <span class="badge bg-light text-secondary border" style="font-size: 0.7rem;">{{ course.schedules.all|length }} créneau{{ course.schedules.all|length|pluralize }}</span>
+                </div>
+                <div class="sch-mini-week mb-2" title="Jours de cours de la semaine">
+                  <span class="sch-mini-day-dot {% for s in course.schedules.all %}{% if s.day == 'MON' %}active{% endif %}{% endfor %}" title="Lundi">L</span>
+                  <span class="sch-mini-day-dot {% for s in course.schedules.all %}{% if s.day == 'TUE' %}active{% endif %}{% endfor %}" title="Mardi">M</span>
+                  <span class="sch-mini-day-dot {% for s in course.schedules.all %}{% if s.day == 'WED' %}active{% endif %}{% endfor %}" title="Mercredi">M</span>
+                  <span class="sch-mini-day-dot {% for s in course.schedules.all %}{% if s.day == 'THU' %}active{% endif %}{% endfor %}" title="Jeudi">J</span>
+                  <span class="sch-mini-day-dot {% for s in course.schedules.all %}{% if s.day == 'FRI' %}active{% endif %}{% endfor %}" title="Vendredi">V</span>
+                  <span class="sch-mini-day-dot {% for s in course.schedules.all %}{% if s.day == 'SAT' %}active{% endif %}{% endfor %}" title="Samedi">S</span>
+                  <span class="sch-mini-day-dot {% for s in course.schedules.all %}{% if s.day == 'SUN' %}active{% endif %}{% endfor %}" title="Dimanche">D</span>
+                </div>
                 {% for sch in course.schedules.all %}
                   <div class="d-flex justify-content-between align-items-center py-1" style="border-bottom:1px solid var(--border);font-size:13px;">
                     <span>
                       <strong>{{ sch.get_day_display }}</strong>
-                      <span class="ms-1" style="color:var(--text-secondary);">{{ sch.start_time|time:"H:i" }} – {{ sch.end_time|time:"H:i" }}</span><!-- ↑ text-muted→text-secondary — WCAG AA -->
+                      <span class="ms-1" style="color:var(--text-secondary);">{{ sch.start_time|time:"H:i" }} – {{ sch.end_time|time:"H:i" }}</span>
                     </span>
-                    <span class="badge badge-secondary">
+                    <span class="badge badge-secondary" title="Salle">
                       <i class="bi bi-door-open"></i> {{ sch.room.name }}
                     </span>
                   </div>
                 {% endfor %}
               </div>
             {% else %}
-              <div class="mb-3" style="font-size:13.5px;color:var(--text-secondary);"><i class="bi bi-clock" aria-hidden="true"></i> Aucun horaire défini</div><!-- ↑ 13px text-muted→13.5px text-secondary — WCAG AA -->
+              <div class="mb-3 py-2 px-3 rounded" style="background:var(--surface-alt);font-size:13px;color:var(--text-secondary);">
+                <i class="bi bi-clock me-1" aria-hidden="true"></i> Aucun horaire récurrent défini
+              </div>
             {% endif %}
 
             <!-- Footer stats -->

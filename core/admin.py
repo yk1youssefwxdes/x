@@ -626,11 +626,12 @@ class StudentAdmin(ModelAdmin, ImportExportModelAdmin):
         if status in ('OK','PAID','UP_TO_DATE','À_JOUR','AJOUR'):
             return mark_safe('<span style="background: #28a745; color: white; padding: 4px 10px; border-radius: 4px; font-weight: bold;">✓ PAYÉ</span>')
         if status in ('PARTIAL','PARTIEL','PARTIALLY_PAID'):
-            return mark_safe('<span style="background: #ff9800; color: white; padding: 4px 10px; border-radius: 4px; font-weight: bold;">⚠ PARTIEL</span>')
-        if status in ('UNPAID','IMPAID','OVERDUE','DUE',''):
-            return mark_safe('<span style="background: #dc3545; color: white; padding: 4px 10px; border-radius: 4px; font-weight: bold;">✗ IMPAYÉ</span>')
-        # fallback: show raw normalized status
-        return format_html('<span style="background: gray; color: white; padding: 4px 10px; border-radius: 4px; font-weight: bold;">{}</span>', status)
+            return mark_safe('<span style="background: #ffc107; color: black; padding: 4px 10px; border-radius: 4px; font-weight: bold;">⚡ PARTIEL</span>')
+        if status in ('EXEMPT','EXEMPTÉ','EXEMPTE'):
+            return mark_safe('<span style="background: #6c757d; color: white; padding: 4px 10px; border-radius: 4px; font-weight: bold;">— EXEMPTÉ</span>')
+        if status in ('NO_ENROLLMENT', 'AUCUN GROUPE'):
+            return mark_safe('<span style="background: #6c757d; color: white; padding: 4px 10px; border-radius: 4px;">AUCUN GROUPE</span>')
+        return mark_safe('<span style="background: #dc3545; color: white; padding: 4px 10px; border-radius: 4px; font-weight: bold;">✗ IMPAYÉ</span>')
     payment_status_badge.short_description = 'Statut'
 
     

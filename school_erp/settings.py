@@ -15,7 +15,10 @@ from django.templatetags.static import static
 from django.urls import reverse_lazy
 import os
 import secrets
-import dj_database_url
+try:
+    import dj_database_url
+except ImportError:
+    dj_database_url = None
 
 # Load environment variables from .env file if present
 try:
@@ -107,19 +110,29 @@ INSTALLED_APPS = [
     'core',
 ]
 
+try:
+    import whitenoise
+except ImportError:
+    whitenoise = None
+
 STORAGES = {
     "default": {
         "BACKEND": "django.core.files.storage.FileSystemStorage",
     },
     "staticfiles": {
-        "BACKEND": "whitenoise.storage.CompressedStaticFilesStorage",
+        "BACKEND": (
+            "whitenoise.storage.CompressedStaticFilesStorage"
+            if whitenoise
+            else "django.contrib.staticfiles.storage.StaticFilesStorage"
+        ),
     },
 }
 
-# Ensure missing static assets never crash template rendering
-WHITENOISE_MANIFEST_STRICT = False
-# Enable WhiteNoise to serve static files directly in local development/runner
-WHITENOISE_USE_FINDERS = True
+if whitenoise:
+    # Ensure missing static assets never crash template rendering
+    WHITENOISE_MANIFEST_STRICT = False
+    # Enable WhiteNoise to serve static files directly in local development/runner
+    WHITENOISE_USE_FINDERS = True
 
 
 
@@ -304,9 +317,10 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
-    # WhiteNoise must be placed directly after SecurityMiddleware so it can
-    # serve compressed static files efficiently before any other middleware.
-    'whitenoise.middleware.WhiteNoiseMiddleware',
+]
+if whitenoise:
+    MIDDLEWARE.append('whitenoise.middleware.WhiteNoiseMiddleware')
+MIDDLEWARE.extend([
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
@@ -316,7 +330,7 @@ MIDDLEWARE = [
     "django_htmx.middleware.HtmxMiddleware",
     "django.contrib.sites.middleware.CurrentSiteMiddleware",
     'core.middleware.AdminOnlyMiddleware',
-]
+])
 
 ROOT_URLCONF = 'school_erp.urls'
 
@@ -371,7 +385,7 @@ _DATABASE_URL = (
 ).strip()
 
 _parsed_db = None
-if _DATABASE_URL and "://" in _DATABASE_URL and not _DATABASE_URL.startswith("://"):
+if dj_database_url and _DATABASE_URL and "://" in _DATABASE_URL and not _DATABASE_URL.startswith("://"):
     try:
         _parsed_db = dj_database_url.parse(
             _DATABASE_URL,
@@ -396,7 +410,7 @@ else:
         'default': {
             'ENGINE': 'django.db.backends.sqlite3',
             'NAME': get_database_path(),
-            'CONN_MAX_AGE': 600,
+            'CONN_MAX_AGE': 0,  # SQLite is an in-process file; closing on request end releases locks cleanly
             "OPTIONS": {
                 # Python-level connection timeout (seconds).
                 "timeout": 30,

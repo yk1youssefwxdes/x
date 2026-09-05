@@ -18,13 +18,23 @@ def conflicts_count(request):
     count = cache.get(CACHE_KEY)
     if count is None:
         try:
-            from .models import CourseGroupSchedule
-            from .utils import _detect_schedule_conflicts
+            from collections import defaultdict
+            from .models import CourseGroupSchedule, TeacherAvailability
+            from .utils import _detect_schedule_conflicts, _detect_schedule_availability_conflicts
             schedules = list(
                 CourseGroupSchedule.objects.filter(course_group__is_active=True)
                 .select_related('course_group', 'course_group__teacher', 'room')
             )
-            count = len(_detect_schedule_conflicts(schedules))
+            overlap_conflicts = _detect_schedule_conflicts(schedules)
+
+            teacher_ids = {sch.course_group.teacher_id for sch in schedules if getattr(sch.course_group, 'teacher_id', None)}
+            availability_entries = TeacherAvailability.objects.filter(teacher_id__in=teacher_ids).select_related('teacher')
+            availability_map = defaultdict(list)
+            for entry in availability_entries:
+                availability_map[(entry.teacher_id, entry.day)].append(entry)
+
+            avail_conflicts = _detect_schedule_availability_conflicts(schedules, availability_map)
+            count = len(overlap_conflicts) + len(avail_conflicts)
         except Exception:
             count = 0
         cache.set(CACHE_KEY, count, CACHE_TTL)

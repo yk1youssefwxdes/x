@@ -3973,13 +3973,70 @@ def teacher_create(request):
 def teacher_quick_add(request):
     """AJAX endpoint: quickly create a teacher from a popup and return JSON."""
     from .forms import TeacherForm
-    form = TeacherForm(request.POST)
+    post_data = request.POST.copy()
+    # Explicitly ensure newly created teacher is marked active
+    if 'is_active' not in post_data:
+        post_data['is_active'] = 'on'
+    form = TeacherForm(post_data)
     if form.is_valid():
-        teacher = form.save()
+        teacher = form.save(commit=False)
+        teacher.is_active = True
+        teacher.save()
         return JsonResponse({'success': True, 'id': teacher.id, 'name': teacher.name})
     # Collect all field errors
     errors = {field: errs.as_text() for field, errs in form.errors.items()}
     return JsonResponse({'success': False, 'errors': errors}, status=400)
+
+
+@require_http_methods(['POST'])
+def room_quick_add(request):
+    """AJAX endpoint: quickly create a room from a popup and return JSON."""
+    from .models import Room
+    name = request.POST.get('name', '').strip()
+    capacity_raw = request.POST.get('capacity', '').strip()
+    building = request.POST.get('building', '').strip()
+    floor_raw = request.POST.get('floor', '').strip()
+
+    errors = {}
+    if not name:
+        errors['name'] = "Le nom de la salle est requis."
+    elif Room.objects.filter(name__iexact=name).exists():
+        errors['name'] = "Une salle avec ce nom existe déjà."
+
+    if not capacity_raw:
+        errors['capacity'] = "La capacité est requise."
+    else:
+        try:
+            capacity = int(capacity_raw)
+            if capacity < 1:
+                errors['capacity'] = "La capacité doit être d'au moins 1 place."
+        except ValueError:
+            errors['capacity'] = "La capacité doit être un nombre entier valide."
+
+    floor = None
+    if floor_raw:
+        try:
+            floor = int(floor_raw)
+        except ValueError:
+            errors['floor'] = "L'étage doit être un nombre entier valide."
+
+    if errors:
+        return JsonResponse({'success': False, 'errors': errors}, status=400)
+
+    room = Room.objects.create(
+        name=name,
+        capacity=capacity,
+        building=building,
+        floor=floor,
+        is_active=True,
+    )
+    return JsonResponse({
+        'success': True,
+        'id': room.id,
+        'name': room.name,
+        'capacity': room.capacity,
+        'label': f"{room.name} ({room.capacity} places)",
+    })
 
 
 @require_http_methods(['GET', 'POST'])

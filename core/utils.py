@@ -418,14 +418,11 @@ def populate_student_payment_and_fee_info(students_list, month_date=None):
         active_enrollments = enrollments_by_student.get(student.id, [])
         student.computed_active_enrollments = active_enrollments
         
-        total_fees = sum(
-            (
-                calculate_enrollment_expected_fee(e, month_date)
-                for e in active_enrollments
-            ),
+        nominal_fees = sum(
+            (e.course_group.monthly_price for e in active_enrollments if e.course_group),
             Decimal("0.00"),
         )
-        student.computed_total_monthly_fees = total_fees
+        student.computed_total_monthly_fees = nominal_fees
         
         required = Decimal('0.00')
         for enrollment in active_enrollments:

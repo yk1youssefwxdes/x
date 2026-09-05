@@ -79,24 +79,13 @@ def _collect_windows_uuid_and_baseboard() -> Tuple[str, str]:
 def get_fingerprint_hash() -> str:
     """Return SHA-256 hash of the stable machine identifiers.
 
-    Uses an in-memory and on-disk cache to avoid launching PowerShell
-    on every Django startup. Falls back to executing the PowerShell query
-    if the cache is missing or corrupt.
+    Uses in-memory process caching so PowerShell is only called once per process lifecycle.
+    Plain-text disk caching is deliberately avoided to prevent licensing bypass via file copying.
     """
     global _CACHED_FINGERPRINT_HASH
 
     if _CACHED_FINGERPRINT_HASH and len(_CACHED_FINGERPRINT_HASH) == 64:
         return _CACHED_FINGERPRINT_HASH
-
-    cache_file = _get_cache_file()
-    if cache_file and cache_file.is_file():
-        try:
-            cached = cache_file.read_text(encoding="utf-8").strip()
-            if len(cached) == 64 and all(c in "0123456789abcdefABCDEF" for c in cached):
-                _CACHED_FINGERPRINT_HASH = cached.lower()
-                return _CACHED_FINGERPRINT_HASH
-        except Exception:
-            pass
 
     if platform.system().lower() == "windows":
         uuid_val, mb_val = _collect_windows_uuid_and_baseboard()
@@ -109,13 +98,6 @@ def get_fingerprint_hash() -> str:
     digest = hashlib.sha256(combined.encode('utf-8')).hexdigest()
 
     _CACHED_FINGERPRINT_HASH = digest
-
-    if cache_file:
-        try:
-            cache_file.parent.mkdir(parents=True, exist_ok=True)
-            cache_file.write_text(digest, encoding="utf-8")
-        except Exception:
-            pass
 
     # Short-lived cleanup
     uuid_val = mb_val = combined = None
