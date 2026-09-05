@@ -1055,6 +1055,7 @@ def sessions_schedule(request):
     ).select_related(
         'group',
         'group__teacher',
+        'substitute_teacher',
         'room'
     ).prefetch_related(
         'group__students'
@@ -1069,7 +1070,10 @@ def sessions_schedule(request):
     if room_filter:
         base_sessions = base_sessions.filter(room_id=room_filter)
     if teacher_filter:
-        base_sessions = base_sessions.filter(group__teacher_id=teacher_filter)
+        base_sessions = base_sessions.filter(
+            Q(substitute_teacher_id=teacher_filter) |
+            Q(substitute_teacher__isnull=True, group__teacher_id=teacher_filter)
+        )
     if group_filter:
         base_sessions = base_sessions.filter(group_id=group_filter)
     if status_filter:
@@ -1079,6 +1083,7 @@ def sessions_schedule(request):
             Q(group__name__icontains=search_query) |
             Q(group__subject__icontains=search_query) |
             Q(group__teacher__name__icontains=search_query) |
+            Q(substitute_teacher__name__icontains=search_query) |
             Q(room__name__icontains=search_query)
         )
     
@@ -1188,7 +1193,7 @@ def sessions_search_ajax(request):
 
     qs = Session.objects.filter(
         date__range=[date_from, date_to]
-    ).select_related('group', 'group__teacher', 'room')
+    ).select_related('group', 'group__teacher', 'substitute_teacher', 'room')
 
     # ── Text search ───────────────────────────────────────────────────────────
     q = request.GET.get('q', '').strip()
@@ -1197,6 +1202,7 @@ def sessions_search_ajax(request):
             Q(group__name__icontains=q) |
             Q(group__subject__icontains=q) |
             Q(group__teacher__name__icontains=q) |
+            Q(substitute_teacher__name__icontains=q) |
             Q(room__name__icontains=q)
         )
 
@@ -1207,12 +1213,16 @@ def sessions_search_ajax(request):
     status      = request.GET.get('status')
 
     if room_id:    qs = qs.filter(room_id=room_id)
-    if teacher_id: qs = qs.filter(group__teacher_id=teacher_id)
+    if teacher_id: qs = qs.filter(
+        Q(substitute_teacher_id=teacher_id) |
+        Q(substitute_teacher__isnull=True, group__teacher_id=teacher_id)
+    )
     if group_id:   qs = qs.filter(group_id=group_id)
     if status:     qs = qs.filter(status=status)
 
     sessions_data = []
     for s in qs.order_by('date', 'start_time')[:200]:
+        teacher_name = s.substitute_teacher.name if s.substitute_teacher else (s.group.teacher.name if s.group and s.group.teacher else '')
         sessions_data.append({
             'id':          s.pk,
             'date':        s.date.strftime('%Y-%m-%d'),
@@ -1220,7 +1230,7 @@ def sessions_search_ajax(request):
             'end_time':    s.end_time.strftime('%H:%M'),
             'group':       s.group.name,
             'subject':     s.group.subject,
-            'teacher':     s.group.teacher.name if s.group.teacher else '',
+            'teacher':     teacher_name,
             'room':        s.room.name if s.room else '',
             'status':      s.status,
             'is_exceptional': s.is_exceptional,
@@ -1273,7 +1283,12 @@ def print_teacher_schedule(request, teacher_id):
         week_start = today - timedelta(days=today.weekday())
         week_end = week_start + timedelta(days=6)
 
-    sessions_qs = Session.objects.filter(date__range=[week_start, week_end], group__teacher_id=teacher_id).select_related('group', 'group__teacher', 'room').prefetch_related('group__students').order_by('date', 'start_time')
+    sessions_qs = Session.objects.filter(
+        date__range=[week_start, week_end]
+    ).filter(
+        Q(substitute_teacher_id=teacher_id) |
+        Q(substitute_teacher__isnull=True, group__teacher_id=teacher_id)
+    ).select_related('group', 'group__teacher', 'substitute_teacher', 'room').prefetch_related('group__students').order_by('date', 'start_time')
     sessions = list(sessions_qs)
     teacher = get_object_or_404(Teacher, pk=teacher_id)
 

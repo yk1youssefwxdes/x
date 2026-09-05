@@ -289,12 +289,20 @@ class SessionFilter(django_filters.FilterSet):
     )
     
     teacher = django_filters.ModelChoiceFilter(
-        field_name='group__teacher',
         queryset=Teacher.objects.filter(is_active=True).order_by('name'),
+        method='filter_teacher',
         label='Professeur',
         empty_label='-- Tous les professeurs --',
         widget=forms.Select(attrs={'class': 'form-select'})
     )
+
+    def filter_teacher(self, queryset, name, value):
+        if value:
+            return queryset.filter(
+                Q(substitute_teacher=value) |
+                Q(substitute_teacher__isnull=True, group__teacher=value)
+            )
+        return queryset
     
     status = django_filters.ChoiceFilter(
         field_name='status',

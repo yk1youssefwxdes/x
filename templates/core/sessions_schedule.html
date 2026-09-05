@@ -33,6 +33,12 @@
           <i class="bi bi-list"></i> Vue liste
         </a>
       </div>
+      <!-- Quick-add session buttons -->
+      <a href="{% url 'core:session_create' %}" class="btn btn-primary d-flex align-items-center gap-1"
+         title="Ajouter une nouvelle séance">
+        <i class="bi bi-plus-circle-fill"></i>
+        <span class="d-none d-md-inline">Ajouter séance</span>
+      </a>
       <div class="btn-group">
         <button class="btn btn-outline-secondary dropdown-toggle" data-bs-toggle="dropdown">Imprimer</button>
         <ul class="dropdown-menu dropdown-menu-end">
@@ -411,6 +417,7 @@
                            data-end-time="{{ session.end_time|time:'H:i' }}"
                            data-date="{{ session.date|date:'Y-m-d' }}"
                            data-room-id="{{ session.room_id }}"
+                           data-teacher-id="{{ session.substitute_teacher_id|default:session.group.teacher_id }}"
                            onclick="showSessionDetail({{ session.id }}, event)">
                         <div class="session-time d-flex justify-content-between align-items-center">
                           <span class="session-time-badge">
@@ -439,7 +446,15 @@
                         <div class="session-meta-row">
                           <span class="session-meta-pill" title="{% if view_mode == 'room' %}Professeur{% else %}Salle{% endif %}">
                             {% if view_mode == 'room' %}
-                              <i class="bi bi-person"></i> {{ session.group.teacher.name|truncatewords:2 }}
+                              <i class="bi bi-person"></i>
+                              {% if session.substitute_teacher %}
+                                <span class="text-warning fw-semibold" title="Remplaçant (Titulaire : {{ session.group.teacher.name }})">
+                                  {{ session.substitute_teacher.name|truncatewords:2 }}
+                                </span>
+                                <span class="badge bg-warning-subtle text-warning ms-1" style="font-size: 0.65rem;">Rempl.</span>
+                              {% else %}
+                                {{ session.group.teacher.name|truncatewords:2 }}
+                              {% endif %}
                             {% else %}
                               <i class="bi bi-door-open"></i> {{ session.room.name }}
                             {% endif %}
@@ -448,6 +463,11 @@
                             <i class="bi bi-people"></i> {{ session.group.students.count }}
                           </span>
                         </div>
+                        {% if view_mode == 'teacher' and session.substitute_teacher and session.substitute_teacher_id == row.entity.id %}
+                          <div class="session-meta-pill text-warning fw-semibold mt-1" style="font-size: 0.68rem;" title="Remplacement de {{ session.group.teacher.name }}">
+                            <i class="bi bi-person-fill-gear"></i> Remplacement ({{ session.group.teacher.name|truncatewords:1 }})
+                          </div>
+                        {% endif %}
                         {% if session.is_exceptional %}
                           <div class="session-exception-badge text-warning fw-semibold mt-1" style="font-size: 0.7rem; display: flex; align-items: center; gap: 4px;">
                             <i class="bi bi-info-circle-fill"></i>

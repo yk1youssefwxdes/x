@@ -1042,6 +1042,34 @@ class Session(models.Model):
         """
         return self.get_exception_type() is not None
 
+    @property
+    def effective_teacher(self):
+        """
+        Returns the teacher conducting this session:
+        substitute_teacher if assigned, otherwise the course group's default teacher.
+        """
+        if hasattr(self, '_effective_teacher'):
+            return self._effective_teacher
+        return self.substitute_teacher or (self.group.teacher if self.group else None)
+
+    @effective_teacher.setter
+    def effective_teacher(self, val):
+        self._effective_teacher = val
+
+    @property
+    def effective_teacher_id(self):
+        """
+        Returns the teacher ID conducting this session:
+        substitute_teacher_id if assigned, otherwise the course group's default teacher_id.
+        """
+        if hasattr(self, '_effective_teacher_id'):
+            return self._effective_teacher_id
+        return self.substitute_teacher_id or (self.group.teacher_id if self.group else None)
+
+    @effective_teacher_id.setter
+    def effective_teacher_id(self, val):
+        self._effective_teacher_id = val
+
 
 
 class Holiday(models.Model):

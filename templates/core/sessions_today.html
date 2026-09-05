@@ -232,6 +232,13 @@
       <span class="badge bg-danger ms-1" style="background:#ef4444!important;">{{ past_uncompleted_count }}</span>
     {% endif %}
   </a>
+  <!-- Quick-add session buttons -->
+  <div class="d-flex align-items-center gap-2 ms-auto">
+    <a href="{% url 'core:session_create' %}" class="btn btn-sm btn-primary d-flex align-items-center gap-1"
+       title="Ajouter une nouvelle séance">
+      <i class="bi bi-plus-circle-fill"></i> Ajouter séance
+    </a>
+  </div>
 </div>
 
 <!-- ── Interactive Status Filter Pills ────────────────────────── -->

@@ -2382,16 +2382,28 @@ def _build_room_schedule(rooms, dates, sessions_list):
 
 
 def _build_teacher_schedule(teachers, dates, sessions_list):
-    """Build schedule rows organized by teacher from in-memory list"""
+    """Build schedule rows organized by teacher from in-memory list.
+    Sessions are assigned to the row of the session's effective teacher
+    (substitute_teacher if assigned, otherwise group.teacher).
+    """
     rows = []
-    
-    for teacher in teachers:
+
+    # Ensure any substitute teacher appearing in sessions_list is included
+    known_teacher_ids = {t.id for t in teachers}
+    all_teachers = list(teachers)
+    for s in sessions_list:
+        sub_t = getattr(s, 'substitute_teacher', None)
+        if sub_t and sub_t.id not in known_teacher_ids:
+            all_teachers.append(sub_t)
+            known_teacher_ids.add(sub_t.id)
+
+    for teacher in all_teachers:
         cells = []
         for date in dates:
-            # Filter in memory
+            # Filter in memory using session's effective teacher
             day_sessions = [
                 s for s in sessions_list 
-                if s.group.teacher_id == teacher.id and s.date == date
+                if (s.substitute_teacher_id or (s.group.teacher_id if s.group else None)) == teacher.id and s.date == date
             ]
             day_sessions.sort(key=lambda x: x.start_time)
             
@@ -2402,10 +2414,13 @@ def _build_teacher_schedule(teachers, dates, sessions_list):
             })
         
         if any(cell['count'] > 0 for cell in cells):
+            detail_str = ""
+            if hasattr(teacher, 'payment_method'):
+                detail_str = f"{teacher.payment_percentage}%" if teacher.payment_method == 'PERCENTAGE' else f"{teacher.hourly_rate} DH/h"
             rows.append({
                 'entity': teacher,
                 'entity_name': teacher.name,
-                'entity_detail': f"{teacher.payment_percentage}%" if teacher.payment_method == 'PERCENTAGE' else f"{teacher.hourly_rate} DH/h",
+                'entity_detail': detail_str,
                 'cells': cells,
                 'total_sessions': sum(cell['count'] for cell in cells)
             })
