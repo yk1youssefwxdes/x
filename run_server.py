@@ -1284,6 +1284,8 @@ class ServerApp:
                     StaticFilesHandler(application),
                     host="0.0.0.0",
                     port=session.django_port,
+                    threads=8,
+                    channel_timeout=30,
                 )
                 break
             except OSError as exc:

@@ -118,6 +118,8 @@ STORAGES = {
 
 # Ensure missing static assets never crash template rendering
 WHITENOISE_MANIFEST_STRICT = False
+# Enable WhiteNoise to serve static files directly in local development/runner
+WHITENOISE_USE_FINDERS = True
 
 
 
@@ -318,16 +320,22 @@ MIDDLEWARE = [
 
 ROOT_URLCONF = 'school_erp.urls'
 
+_template_loaders = [
+    'core.loaders.DecryptedFilesystemLoader',
+    'django.template.loaders.app_directories.Loader',
+]
+if not DEBUG or os.environ.get('DJANGO_ENABLE_TEMPLATE_CACHE') == '1':
+    _template_loaders = [
+        ('django.template.loaders.cached.Loader', _template_loaders)
+    ]
+
 TEMPLATES = [
     {
         'BACKEND': 'django.template.backends.django.DjangoTemplates',
         'DIRS': [BASE_DIR / 'templates'],
         'APP_DIRS': False,
         'OPTIONS': {
-            'loaders': [
-                'core.loaders.DecryptedFilesystemLoader',
-                'django.template.loaders.app_directories.Loader',
-            ],
+            'loaders': _template_loaders,
             'context_processors': [
                 'django.template.context_processors.request',
                 'django.contrib.auth.context_processors.auth',
@@ -388,6 +396,7 @@ else:
         'default': {
             'ENGINE': 'django.db.backends.sqlite3',
             'NAME': get_database_path(),
+            'CONN_MAX_AGE': 600,
             "OPTIONS": {
                 # Python-level connection timeout (seconds).
                 "timeout": 30,
@@ -395,10 +404,16 @@ else:
                 #   journal_mode=WAL    — enables WAL mode.
                 #   synchronous=NORMAL  — sufficient durability under WAL.
                 #   busy_timeout=30000  — wait up to 30 s before raising error.
+                #   mmap_size           — 256MB memory-mapped I/O.
+                #   cache_size          — 64MB in-memory page cache.
+                #   temp_store=MEMORY   — avoid disk I/O for temporary tables/sorting.
                 "init_command": (
                     "PRAGMA journal_mode=WAL;"
                     "PRAGMA synchronous=NORMAL;"
                     "PRAGMA busy_timeout=30000;"
+                    "PRAGMA mmap_size=268435456;"
+                    "PRAGMA cache_size=-64000;"
+                    "PRAGMA temp_store=MEMORY;"
                 ),
             },
         }

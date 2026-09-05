@@ -1,10 +1,4 @@
-"""
-Context processor: injects `conflict_count` into every template context
-so the base sidebar can display a live badge on the "Conflits" link.
-
-The count is computed cheaply (schedule-only conflicts, O(n²) on schedules)
-and cached per-request so it's called at most once per page.
-"""
+import threading
 from django.core.cache import cache
 from django.conf import settings
 
@@ -15,19 +9,22 @@ def conflicts_count(request):
     schedule conflicts (room + teacher overlaps).
 
     Results are cached for 2 minutes so every page load doesn't trigger
-    a full scan.  The cache is invalidated by the post_save signal on
+    a full scan. The cache is invalidated by the post_save signal on
     CourseGroupSchedule (see models.py).
     """
     CACHE_KEY = 'sidebar_conflict_count'
-    CACHE_TTL = getattr(settings, 'CONFLICT_CACHE_TTL', 120)  # 2 minutes instead of 30 seconds
+    CACHE_TTL = getattr(settings, 'CONFLICT_CACHE_TTL', 120)
 
     count = cache.get(CACHE_KEY)
     if count is None:
         try:
-            from .utils import detect_all_conflicts
-            data = detect_all_conflicts()
-            # Only schedule conflicts matter for the sidebar badge
-            count = len(data.get('schedule_conflicts', []))
+            from .models import CourseGroupSchedule
+            from .utils import _detect_schedule_conflicts
+            schedules = list(
+                CourseGroupSchedule.objects.filter(course_group__is_active=True)
+                .select_related('course_group', 'course_group__teacher', 'room')
+            )
+            count = len(_detect_schedule_conflicts(schedules))
         except Exception:
             count = 0
         cache.set(CACHE_KEY, count, CACHE_TTL)
@@ -38,20 +35,27 @@ def conflicts_count(request):
 def whatsapp_status(request):
     """
     Returns {'whatsapp_connected': True/False} to show status indicator in main sidebar.
-    Cached for 30 seconds to prevent slowing down page loads.
+    Cached for 30 seconds. If expired, refreshes asynchronously in background to
+    prevent slowing down page loads or blocking on network timeouts.
     """
     CACHE_KEY = 'sidebar_whatsapp_status'
-    CACHE_TTL = 30  # Increased from 5 seconds to 30 seconds
+    CACHE_TTL = 30
     
     connected = cache.get(CACHE_KEY)
     if connected is None:
-        try:
-            from .utils import WhatsAppServiceAPI
-            status_data = WhatsAppServiceAPI.get_status()
-            connected = not status_data.get('offline', True) and status_data.get('status') == 'READY'
-        except Exception:
-            connected = False
-        cache.set(CACHE_KEY, connected, CACHE_TTL)
+        def _refresh():
+            try:
+                from .utils import WhatsAppServiceAPI
+                status_data = WhatsAppServiceAPI.get_status(timeout=0.4)
+                is_conn = not status_data.get('offline', True) and status_data.get('status') == 'READY'
+                cache.set(CACHE_KEY, is_conn, CACHE_TTL)
+            except Exception:
+                cache.set(CACHE_KEY, False, CACHE_TTL)
+
+        # Set a quick temporary flag so concurrent requests don't all trigger threads
+        cache.set(CACHE_KEY, False, 5)
+        threading.Thread(target=_refresh, daemon=True).start()
+        return {'whatsapp_connected': False}
         
     return {'whatsapp_connected': connected}
 
@@ -59,9 +63,15 @@ def whatsapp_status(request):
 def school_info(request):
     """
     Returns configurable school settings to be available in all templates.
+    Cached in bulk for 5 minutes.
     """
+    CACHE_KEY = 'school_info_context'
+    info = cache.get(CACHE_KEY)
+    if info is not None:
+        return info
+
     from .utils import get_setting
-    return {
+    info = {
         'SCHOOL_NAME': get_setting('SCHOOL_NAME', 'Centre My2i'),
         'SCHOOL_SUBTITLE': get_setting('SCHOOL_SUBTITLE', 'Soutien Scolaire & Langues'),
         'SCHOOL_ADDRESS': get_setting('SCHOOL_ADDRESS', 'Rue Marrakech, Im 16, Ap N 3, 2ème Étage, Khouribga'),
@@ -70,4 +80,6 @@ def school_info(request):
         'SCHOOL_LOGO_PATH': get_setting('SCHOOL_LOGO_PATH', 'images/tonaroz_logo.svg'),
         'CURRENCY_SYMBOL': get_setting('CURRENCY_SYMBOL', 'DH'),
     }
+    cache.set(CACHE_KEY, info, 300)
+    return info
 

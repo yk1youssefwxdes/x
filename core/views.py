@@ -739,20 +739,21 @@ def session_attendance(request, session_id):
         existing = Attendance.objects.filter(course_group=session.group, date=session.date)
         present_map = {a.student_id: a.is_present for a in existing}
         
-        from .utils import get_student_payment_status
+        from .utils import populate_student_payment_and_fee_info
         month_covered = session.date.replace(day=1)
+        students_obj_list = list(students)
+        populate_student_payment_and_fee_info(students_obj_list, month_covered)
         
         students_list = []
-        for s in students:
+        for s in students_obj_list:
             # default to True (present) when no record exists
             checked = present_map.get(s.id, True)
-            pm_status = get_student_payment_status(s, month_covered)
-            is_unpaid = pm_status['status'] in ('UNPAID', 'PARTIAL')
+            is_unpaid = getattr(s, 'computed_payment_status', 'OK') in ('UNPAID', 'PARTIAL')
             students_list.append({
                 'student': s,
                 'checked': checked,
                 'is_unpaid': is_unpaid,
-                'remaining': pm_status['remaining']
+                'remaining': getattr(s, 'computed_remaining', Decimal('0.00'))
             })
 
         return render(request, 'core/session_attendance.html', {
@@ -925,8 +926,10 @@ def group_detail(request, group_id):
     )
 
     # Students enrolled in this group
-    students = group.students.select_related('level').order_by('name')
-    total_students = students.count()
+    students = list(group.students.select_related('level').order_by('name'))
+    from .utils import populate_student_payment_and_fee_info
+    populate_student_payment_and_fee_info(students)
+    total_students = len(students)
 
     # Monthly revenue estimate
     monthly_revenue = group.monthly_price * total_students
@@ -1376,14 +1379,18 @@ def print_students_list(request):
     # Build table data
     table_data = [['Matricule', 'Nom', 'Contact', 'Cours', 'Frais/mois', 'Statut']]
     
-    for student in students:
+    from .utils import populate_student_payment_and_fee_info
+    students_list_all = list(students)
+    populate_student_payment_and_fee_info(students_list_all)
+    
+    for student in students_list_all:
         matricule = student.matricule or '—'
         name = student.name
         phone = student.parent_contact or '—'
-        enrollments = student.enrollment_set.filter(is_active=True).count()
+        enrollments = len(getattr(student, 'computed_active_enrollments', []))
         courses = f"{enrollments} cours"
-        fees = f"{student.total_monthly_fees()} DH"
-        status = student.payment_status()
+        fees = f"{getattr(student, 'computed_total_monthly_fees', student.total_monthly_fees())} DH"
+        status = getattr(student, 'computed_payment_status', student.payment_status())
         status_display = {
             'OK': '✓ Payé',
             'PARTIAL': '⚠ Partiel',
@@ -1415,8 +1422,8 @@ def print_students_list(request):
     elements.append(Spacer(1, 0.3*inch))
     elements.append(Paragraph(f"Total: <b>{len(table_data) - 1}</b> élèves", styles['Normal']))
     
-    for row_index, student in enumerate(students, start=1):  # start=1 because row 0 is the header
-        if student.payment_status() == 'UNPAID':
+    for row_index, student in enumerate(students_list_all, start=1):  # start=1 because row 0 is the header
+        if getattr(student, 'computed_payment_status', 'OK') == 'UNPAID':
             table.setStyle(TableStyle([
                 ('BACKGROUND', (0, row_index), (-1, row_index), colors.HexColor('#ffcccc')),
                 ('TEXTCOLOR', (0, row_index), (-1, row_index), colors.red),
@@ -3824,15 +3831,17 @@ def level_detail(request, level_id):
     course_groups = course_groups.annotate(enrollment_count=Count('enrollment'))
     
     # Get students in this level
-    students = level.students.all().prefetch_related('enrollment_set__course_group', 'payments').order_by('name')
+    students = list(level.students.all().prefetch_related('enrollment_set__course_group', 'payments').order_by('name'))
+    from .utils import populate_student_payment_and_fee_info
+    populate_student_payment_and_fee_info(students)
     
     # Compute quick stats
-    total_students = students.count()
-    active_students = students.filter(is_active=True).count()
+    total_students = len(students)
+    active_students = sum(1 for s in students if s.is_active)
     total_groups = course_groups.count()
     
     # Total monthly expected revenue from this level
-    total_monthly_fees = sum((s.total_monthly_fees() for s in students.filter(is_active=True)), Decimal('0.00'))
+    total_monthly_fees = sum((getattr(s, 'computed_total_monthly_fees', Decimal('0.00')) for s in students if s.is_active), Decimal('0.00'))
     
     context = {
         'level': level,
@@ -5144,20 +5153,21 @@ def public_teacher_attendance_session(request, session_id):
         existing = Attendance.objects.filter(course_group=session.group, date=session.date)
         present_map = {a.student_id: a.is_present for a in existing}
 
-        from .utils import get_student_payment_status
+        from .utils import populate_student_payment_and_fee_info
         month_covered = session.date.replace(day=1)
+        students_obj_list = list(students)
+        populate_student_payment_and_fee_info(students_obj_list, month_covered)
 
         students_list = []
-        for s in students:
+        for s in students_obj_list:
             # Default to present (True) if no entry yet exists
             checked = present_map.get(s.id, True)
-            pm_status = get_student_payment_status(s, month_covered)
-            is_unpaid = pm_status['status'] in ('UNPAID', 'PARTIAL')
+            is_unpaid = getattr(s, 'computed_payment_status', 'OK') in ('UNPAID', 'PARTIAL')
             students_list.append({
                 'student': s,
                 'checked': checked,
                 'is_unpaid': is_unpaid,
-                'remaining': pm_status['remaining']
+                'remaining': getattr(s, 'computed_remaining', Decimal('0.00'))
             })
 
         return render(request, 'core/public_attendance_session.html', {

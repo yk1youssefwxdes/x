@@ -104,13 +104,88 @@ def session_pre_save_snapshot(sender, instance, **kwargs):
         setattr(instance, _SNAPSHOT_ATTR, None)
 
 
+import threading
+from django.db import connection, transaction
+
+
+def _run_async(func, *args, **kwargs):
+    """Run a task asynchronously in a daemon thread, closing the DB connection when finished."""
+    def worker():
+        try:
+            func(*args, **kwargs)
+        except Exception:
+            pass
+        finally:
+            connection.close()
+
+    t = threading.Thread(target=worker, daemon=True)
+    try:
+        transaction.on_commit(lambda: t.start())
+    except Exception:
+        t.start()
+
+
+def _async_send_session_notifications(session_id: int, now_cancelled: bool, schedule_changes: list, msg_type: str):
+    """Worker function to send session cancellation/change notifications in background."""
+    from .models import Session
+    try:
+        instance = (
+            Session.objects
+            .select_related('group', 'room', 'substitute_teacher', 'group__teacher')
+            .get(pk=session_id)
+        )
+    except Exception:
+        return
+
+    if now_cancelled:
+        message = _build_cancellation_message(instance)
+    else:
+        message = _build_change_message(instance, schedule_changes)
+
+    # Notify enrolled students via parent contact
+    try:
+        import time
+        enrolled_students = (
+            instance.group.students
+            .filter(is_active=True, enrollment__is_active=True)
+            .distinct()
+        )
+        for student in enrolled_students:
+            phones = [
+                p for p in [student.parent_contact, student.parent_contact_2, student.phone]
+                if p
+            ]
+            seen = set()
+            for phone in phones:
+                if phone not in seen:
+                    seen.add(phone)
+                    _notify(phone, message, student=student, message_type=msg_type)
+                    time.sleep(0.3)  # Gentle spacing for WhatsApp Web without holding Django request
+    except Exception:
+        pass
+
+    # Notify the teacher (substitute takes precedence over primary teacher)
+    try:
+        teacher = instance.substitute_teacher or instance.group.teacher
+        if teacher and teacher.phone:
+            teacher_label = "[Remplaçant]" if instance.substitute_teacher else "[Professeur]"
+            _notify(
+                teacher.phone,
+                f"{teacher_label} {message}",
+                student=None,
+                message_type=msg_type,
+            )
+    except Exception:
+        pass
+
+
 if settings.WHATSAPP_SESSION_NOTIFICATIONS_ENABLED:
     @receiver(post_save, sender='core.Session')
     def session_post_save_notify(sender, instance, created, **kwargs):
         """
         After a Session is saved, diff against snapshot and send WA notifications
         for cancellations or meaningful schedule changes ONLY if _auto_notify is explicitly set to True.
-        Otherwise, changes are saved as unhandled in SessionChangeHistory for batch handling.
+        Notifications are dispatched asynchronously to keep requests fast and non-blocking.
         """
         if created:
             return
@@ -152,49 +227,8 @@ if settings.WHATSAPP_SESSION_NOTIFICATIONS_ENABLED:
         if not now_cancelled and not schedule_changes:
             return
 
-        if now_cancelled:
-            message = _build_cancellation_message(instance)
-            msg_type = 'absence_notification'
-        else:
-            message = _build_change_message(instance, schedule_changes)
-            msg_type = 'session_reminder'
-
-        # Notify enrolled students via parent contact
-        try:
-            import time
-            enrolled_students = (
-                instance.group.students
-                .filter(is_active=True, enrollment__is_active=True)
-                .distinct()
-            )
-            for student in enrolled_students:
-                phones = [
-                    p for p in [student.parent_contact, student.parent_contact_2, student.phone]
-                    if p
-                ]
-                # Deduplicate while preserving order (parent_contact_2 may equal student.phone)
-                seen = set()
-                for phone in phones:
-                    if phone not in seen:
-                        seen.add(phone)
-                        _notify(phone, message, student=student, message_type=msg_type)
-                        time.sleep(1.5)
-        except Exception:
-            pass
-
-        # Notify the teacher (substitute takes precedence over primary teacher)
-        try:
-            teacher = instance.substitute_teacher or instance.group.teacher
-            if teacher and teacher.phone:
-                teacher_label = "[Remplaçant]" if instance.substitute_teacher else "[Professeur]"
-                _notify(
-                    teacher.phone,
-                    f"{teacher_label} {message}",
-                    student=None,
-                    message_type=msg_type,
-                )
-        except Exception:
-            pass
+        msg_type = 'absence_notification' if now_cancelled else 'session_reminder'
+        _run_async(_async_send_session_notifications, instance.pk, now_cancelled, schedule_changes, msg_type)
 
 
 @receiver(post_save, sender='core.Payment')

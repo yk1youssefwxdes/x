@@ -571,6 +571,18 @@ class StudentAdmin(ModelAdmin, ImportExportModelAdmin):
     list_filter = ('is_active', PaymentStatusFilter, 'enrollment__course_group', 'level')
     search_fields = ('name', 'phone', 'parent_contact', 'parent_contact_2', 'parent_name', 'main_school')
     inlines = [EnrollmentInline, PaymentInline]
+    list_select_related = ('level',)
+
+    def changelist_view(self, request, extra_context=None):
+        response = super().changelist_view(request, extra_context=extra_context)
+        try:
+            cl = response.context_data.get('cl')
+            if cl and hasattr(cl, 'result_list') and cl.result_list:
+                from core.utils import populate_student_payment_and_fee_info
+                populate_student_payment_and_fee_info(cl.result_list)
+        except Exception:
+            pass
+        return response
     
     fieldsets = (
         ('Informations élève', {
@@ -587,22 +599,30 @@ class StudentAdmin(ModelAdmin, ImportExportModelAdmin):
     actions = ['generate_payment_reminders']
     
     def groups_display(self, obj):
-        groups = obj.enrollment_set.filter(is_active=True)
-        if groups.exists():
+        groups = getattr(obj, 'computed_active_enrollments', None)
+        if groups is None:
+            groups = list(obj.enrollment_set.filter(is_active=True).select_related('course_group'))
+        if groups:
             group_list = '<br>'.join([f"• {e.course_group.name}" for e in groups[:3]])
-            if groups.count() > 3:
-                group_list += f'<br>... +{groups.count() - 3} autres'
+            if len(groups) > 3:
+                group_list += f'<br>... +{len(groups) - 3} autres'
             return mark_safe(group_list)
         return mark_safe('<span style="color: gray;">Aucun groupe</span>')
     groups_display.short_description = 'Groupes'
     
     def monthly_fees_display(self, obj):
-        total = obj.total_monthly_fees()
+        if hasattr(obj, 'computed_total_monthly_fees'):
+            total = obj.computed_total_monthly_fees
+        else:
+            total = obj.total_monthly_fees()
         return format_html('<strong style="font-size: 14px;">{} DH</strong>', total)
     monthly_fees_display.short_description = 'Frais mensuels'
     
     def payment_status_badge(self, obj):
-        status = (obj.payment_status() or '').strip().upper()
+        if hasattr(obj, 'computed_payment_status'):
+            status = (obj.computed_payment_status or '').strip().upper()
+        else:
+            status = (obj.payment_status() or '').strip().upper()
         if status in ('OK','PAID','UP_TO_DATE','À_JOUR','AJOUR'):
             return mark_safe('<span style="background: #28a745; color: white; padding: 4px 10px; border-radius: 4px; font-weight: bold;">✓ PAYÉ</span>')
         if status in ('PARTIAL','PARTIEL','PARTIALLY_PAID'):
@@ -650,6 +670,7 @@ class PaymentAdmin(ModelAdmin, ImportExportModelAdmin):
     search_fields = ('receipt_number', 'student__name', 'notes')
     autocomplete_fields = ['student']
     date_hierarchy = 'payment_date'
+    list_select_related = ('student',)
     
     fieldsets = (
         ('Paiement', {
@@ -696,6 +717,7 @@ class AttendanceAdmin(ModelAdmin):
     search_fields = ('student__name', 'course_group__name')
     autocomplete_fields = ['student', 'course_group']
     date_hierarchy = 'date'
+    list_select_related = ('student', 'course_group')
     
     def presence_badge(self, obj):
         if obj.is_present:
@@ -716,6 +738,7 @@ class SessionAdmin(ModelAdmin):
     list_filter = ('status', 'date', 'room', 'group__teacher')
     search_fields = ('group__name', 'group__teacher__name', 'room__name')
     autocomplete_fields = ['group']
+    list_select_related = ('group__teacher', 'room')
 
     def get_teacher(self, obj):
         return obj.group.teacher.name if obj.group and obj.group.teacher else '-'
@@ -743,6 +766,7 @@ class WhatsAppSendLogAdmin(ModelAdmin):
     readonly_fields = ('student', 'phone', 'message_type', 'message_preview', 'status', 'error_message', 'sent_at')
     ordering = ('-sent_at',)
     list_per_page = 50
+    list_select_related = ('student',)
 
     def get_student_name(self, obj):
         if obj.student:

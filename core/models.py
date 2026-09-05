@@ -401,6 +401,10 @@ class CourseGroupSchedule(models.Model):
         verbose_name = "Horaire de groupe"
         verbose_name_plural = "Horaires de groupe"
         ordering = ['day', 'start_time']
+        indexes = [
+            models.Index(fields=['room', 'day']),
+            models.Index(fields=['course_group', 'day']),
+        ]
 
     def __str__(self):
         return f"{self.course_group.name} - {self.get_day_display()} {self.start_time.strftime('%H:%M')}-{self.end_time.strftime('%H:%M')} ({self.room.name})"
@@ -536,6 +540,10 @@ class Student(models.Model):
         verbose_name = "Élève"
         verbose_name_plural = "Élèves"
         ordering = ['name']
+        indexes = [
+            models.Index(fields=['is_active']),
+            models.Index(fields=['is_active', 'name']),
+        ]
     
     def __str__(self):
         return self.name
@@ -647,6 +655,11 @@ class Enrollment(models.Model):
         constraints = [
             models.UniqueConstraint(fields=['student', 'course_group'], name='unique_enrollment_per_student_course_group')
         ]
+        indexes = [
+            models.Index(fields=['is_active']),
+            models.Index(fields=['student', 'is_active']),
+            models.Index(fields=['course_group', 'is_active']),
+        ]
     
     def clean(self):
         super().clean()
@@ -755,6 +768,12 @@ class Payment(models.Model):
         verbose_name = "Paiement"
         verbose_name_plural = "Paiements"
         ordering = ['-payment_date', '-created_at']
+        indexes = [
+            models.Index(fields=['status']),
+            models.Index(fields=['month_covered', 'status']),
+            models.Index(fields=['payment_date', 'status']),
+            models.Index(fields=['student', 'month_covered']),
+        ]
     
     def __str__(self):
         return f"Reçu {self.receipt_number} - {self.student.name} - {self.amount} DH"

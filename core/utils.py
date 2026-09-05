@@ -83,6 +83,7 @@ def set_setting(key: str, value: str, label: str = '', group: str = 'GENERAL'):
         item.group = group
     item.save()
     cache.delete(f'sys_setting_{key}')
+    cache.delete('school_info_context')
 
 
 from decimal import ROUND_UP
@@ -435,6 +436,9 @@ def populate_student_payment_and_fee_info(students_list, month_date=None):
         status = calculate_payment_status(required, paid)
             
         student.computed_payment_status = status
+        student.computed_paid = paid
+        student.computed_required = required
+        student.computed_remaining = max(required - paid, Decimal('0.00'))
 
 
 # ==================== CALCULS PROFESSEURS ====================
@@ -1406,7 +1410,12 @@ def generate_sessions_from_coursegroups(start_date: date, end_date: date, force:
 def auto_generate_future_sessions():
     """Checks if the maximum future session date is less than 2 weeks away.
     If so, generates sessions for the next 4 weeks to keep the calendar populated.
+    Caches the check in-memory for 1 hour to prevent redundant scans on every page load.
     """
+    from django.core.cache import cache
+    if cache.get('future_sessions_checked'):
+        return
+
     from .models import Session
     from django.db.models import Max
     from datetime import timedelta
@@ -1418,6 +1427,8 @@ def auto_generate_future_sessions():
     if not max_date or max_date < today + timedelta(weeks=2):
         end_date = today + timedelta(weeks=4)
         generate_sessions_from_coursegroups(today, end_date, force=False)
+
+    cache.set('future_sessions_checked', True, 3600)
 
 
 # ==================== GÉNÉRATION DE STATISTIQUES ====================
@@ -2702,7 +2713,7 @@ class WhatsAppServiceAPI:
     BASE_URL = f"http://{getattr(settings, 'WHATSAPP_SERVICE_HOST', 'localhost')}:{settings.WHATSAPP_SERVICE_PORT}"
 
     @classmethod
-    def get_status(cls):
+    def get_status(cls, timeout: float = 0.5):
         """
         Get the current status of the Node.js WhatsApp service.
         Returns:
@@ -2712,7 +2723,7 @@ class WhatsAppServiceAPI:
         url = f"{cls.BASE_URL}/status"
         try:
             req = urllib.request.Request(url, method='GET')
-            with urllib.request.urlopen(req, timeout=2) as response:
+            with urllib.request.urlopen(req, timeout=timeout) as response:
                 if response.status == 200:
                     data = json.loads(response.read().decode('utf-8'))
                     data['offline'] = False

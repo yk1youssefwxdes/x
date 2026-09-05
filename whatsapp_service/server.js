@@ -22,7 +22,7 @@ const logDir = process.env.WA_LOG_DIR
     : path.join(__dirname, 'logs');
 
 const INIT_TIMEOUT_MS = Number(process.env.WA_INIT_TIMEOUT_MS || 120000);           // 120 seconds
-const STARTUP_DELAY_MS = Number(process.env.WA_STARTUP_DELAY_MS || 10000);         // 10 seconds post-boot delay
+const STARTUP_DELAY_MS = Number(process.env.WA_STARTUP_DELAY_MS !== undefined ? process.env.WA_STARTUP_DELAY_MS : 300); // Fast startup delay (300ms)
 const DESTROY_TIMEOUT_MS = Number(process.env.WA_DESTROY_TIMEOUT_MS || 15000);       // 15 seconds
 const RESTART_MAX_DELAY_MS = Number(process.env.WA_RESTART_MAX_DELAY_MS || 60000);   // 60 seconds max backoff
 const AUTH_TO_READY_TIMEOUT_MS = Number(process.env.WA_AUTH_TO_READY_TIMEOUT_MS || 60000); // 60 seconds
@@ -657,7 +657,10 @@ async function initializeNewClient(triggerReason = 'Standard') {
         '--disable-component-update',
         '--disable-extensions',
         '--disable-ipc-flooding-protection',
-        '--disable-renderer-backgrounding'
+        '--disable-renderer-backgrounding',
+        '--disable-dev-shm-usage',
+        '--mute-audio',
+        '--js-flags=--max-old-space-size=512'
     ];
 
     if (process.env.WA_DISABLE_SANDBOX === 'true') {
@@ -1086,21 +1089,6 @@ app.post('/send', requireApiKey, async (req, res) => {
                 const err = new Error(`Client disconnected before message could be sent (Status: ${clientStatus})`);
                 err.statusCode = 503;
                 throw err;
-            }
-
-            // Check if phone number is registered on WhatsApp
-            let isRegistered = false;
-            try {
-                isRegistered = await client.isRegisteredUser(chatId);
-            } catch (regErr) {
-                log('warn', `isRegisteredUser check failed for ${chatId}: ${regErr.message}. Attempting direct send.`);
-                isRegistered = true;
-            }
-
-            if (!isRegistered) {
-                const notRegisteredErr = new Error(`Le numéro ${phone} n'est pas enregistré sur WhatsApp.`);
-                notRegisteredErr.statusCode = 400;
-                throw notRegisteredErr;
             }
 
             let lastResponse = null;
