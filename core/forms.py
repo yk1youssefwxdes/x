@@ -469,7 +469,7 @@ class SystemSettingsForm(forms.Form):
     SCHOOL_NAME = forms.CharField(
         label="Nom du centre",
         required=True,
-        widget=forms.TextInput(attrs={'class': 'form-control form-control-lg', 'placeholder': 'Ex: Centre My2i'})
+        widget=forms.TextInput(attrs={'class': 'form-control form-control-lg', 'placeholder': 'Ex: Centre Scolaire'})
     )
     SCHOOL_SUBTITLE = forms.CharField(
         label="Slogan / Activité",

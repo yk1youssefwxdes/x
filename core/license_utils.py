@@ -45,7 +45,7 @@ def _build_associated_data(output_name: str) -> bytes:
     return KDF_SALT_PREFIX + output_name.encode("utf-8")
 
 
-def encrypt_license_payload(payload: dict, secret_key: str, output_name: str) -> dict:
+def encrypt_license_payload(payload: dict, secret_key: str, output_name: str = "license.enc") -> dict:
     plaintext = json.dumps(payload, separators=(",", ":"), sort_keys=True).encode("utf-8")
     salt = os.urandom(16)
     nonce = os.urandom(12)
@@ -69,8 +69,23 @@ def decrypt_license_file(path: Path, secret_key: str) -> dict:
     salt = base64.b64decode(payload["salt"])
     nonce = base64.b64decode(payload["nonce"])
     ciphertext = base64.b64decode(payload["ciphertext"])
-    associated_data = _build_associated_data(path.name)
-    key = derive_license_key(secret_key, associated_data, salt)
-    plaintext = AESGCM(key).decrypt(nonce, ciphertext, associated_data=associated_data)
 
-    return json.loads(plaintext.decode("utf-8"))
+    # Attempt decryption with canonical 'license.enc' associated data first,
+    # then fallback to path.name if different (e.g. for backups or custom names).
+    candidate_names = ["license.enc"]
+    if path.name not in candidate_names:
+        candidate_names.append(path.name)
+
+    last_error: Exception | None = None
+    for name in candidate_names:
+        try:
+            associated_data = _build_associated_data(name)
+            key = derive_license_key(secret_key, associated_data, salt)
+            plaintext = AESGCM(key).decrypt(nonce, ciphertext, associated_data=associated_data)
+            return json.loads(plaintext.decode("utf-8"))
+        except Exception as exc:
+            last_error = exc
+
+    if last_error is not None:
+        raise last_error
+    raise RuntimeError("Failed to decrypt license payload")

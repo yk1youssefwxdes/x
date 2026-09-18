@@ -82,7 +82,7 @@ def school_info(request):
 
     from .utils import get_setting
     info = {
-        'SCHOOL_NAME': get_setting('SCHOOL_NAME', 'Centre My2i'),
+        'SCHOOL_NAME': get_setting('CENTER_NAME') or get_setting('SCHOOL_NAME', 'Centre'),
         'SCHOOL_SUBTITLE': get_setting('SCHOOL_SUBTITLE', 'Soutien Scolaire & Langues'),
         'SCHOOL_ADDRESS': get_setting('SCHOOL_ADDRESS', 'Rue Marrakech, Im 16, Ap N 3, 2ème Étage, Khouribga'),
         'SCHOOL_PHONE': get_setting('SCHOOL_PHONE', '0707477911 / 0661569522'),

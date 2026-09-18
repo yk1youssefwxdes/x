@@ -27,6 +27,7 @@ const DESTROY_TIMEOUT_MS = Number(process.env.WA_DESTROY_TIMEOUT_MS || 15000);  
 const RESTART_MAX_DELAY_MS = Number(process.env.WA_RESTART_MAX_DELAY_MS || 60000);   // 60 seconds max backoff
 const AUTH_TO_READY_TIMEOUT_MS = Number(process.env.WA_AUTH_TO_READY_TIMEOUT_MS || 60000); // 60 seconds
 const MAX_ATTACHMENT_SIZE_MB = Number(process.env.WA_MAX_ATTACHMENT_SIZE_MB || 25);
+const QUEUE_TIMEOUT_MS = Number(process.env.WA_QUEUE_TIMEOUT_MS || 300000); // 5 minutes max in send queue for bulk campaigns
 const MAX_LOG_SIZE_BYTES = 10 * 1024 * 1024; // 10MB per log file before rotation
 
 // ── Chrome Path Resolution ───────────────────────────────────────────────────
@@ -381,6 +382,13 @@ class SendQueue {
         });
     }
 
+    getStatus() {
+        return {
+            length: this.queue.length,
+            isProcessing: this.isProcessing
+        };
+    }
+
     async process() {
         if (this.isProcessing || this.queue.length === 0) return;
         this.isProcessing = true;
@@ -396,8 +404,8 @@ class SendQueue {
                 continue;
             }
 
-            if (Date.now() - item.enqueuedAt > 30000) {
-                const timeoutErr = new Error('Send operation timed out in queue');
+            if (Date.now() - item.enqueuedAt > QUEUE_TIMEOUT_MS) {
+                const timeoutErr = new Error(`Send operation timed out in queue (exceeded ${Math.round(QUEUE_TIMEOUT_MS / 1000)}s)`);
                 timeoutErr.statusCode = 504;
                 item.reject(timeoutErr);
                 continue;
@@ -410,7 +418,7 @@ class SendQueue {
                 item.reject(err);
             }
 
-            // Brief pacing pause between consecutive sends
+            // Pacing pause between consecutive sends (protects against rate limits)
             await new Promise((r) => setTimeout(r, 250));
         }
 
@@ -443,7 +451,15 @@ function normalizePhoneNumber(rawPhone) {
         return { valid: false, error: 'Phone number cannot be empty.' };
     }
 
-    let cleaned = original.replace(/[\s\-\(\)\.]/g, '');
+    // Direct support for full WhatsApp chat IDs (individual or group)
+    if (/^\d+@c\.us$/.test(original) || /^[a-zA-Z0-9_-]+@g\.us$/.test(original)) {
+        return { valid: true, cleanedPhone: original.split('@')[0], chatId: original };
+    }
+
+    // Split compound numbers if multiple were provided (e.g. "0612345678 / 0698765432")
+    const firstPart = original.split(/[/,;\n|]/)[0].trim();
+
+    let cleaned = firstPart.replace(/[\s\-\(\)\.]/g, '');
 
     if (cleaned.startsWith('+')) {
         cleaned = cleaned.substring(1);
@@ -663,8 +679,10 @@ async function initializeNewClient(triggerReason = 'Standard') {
         '--js-flags=--max-old-space-size=512'
     ];
 
-    if (process.env.WA_DISABLE_SANDBOX === 'true') {
-        puppeteerArgs.push('--no-sandbox', '--disable-setuid-sandbox');
+    if (process.platform === 'linux' || process.env.WA_DISABLE_SANDBOX === 'true' || process.env.NO_SANDBOX === '1') {
+        if (process.env.WA_DISABLE_SANDBOX !== 'false') {
+            puppeteerArgs.push('--no-sandbox', '--disable-setuid-sandbox');
+        }
     }
 
     const puppeteerConfig = {
@@ -750,11 +768,22 @@ async function initializeNewClient(triggerReason = 'Standard') {
             newClient.removeAllListeners();
         } catch (_) {}
 
-        // Controlled teardown without deleting session directory
+        // Controlled teardown and purge corrupted session directory to unblock fresh QR generation
         enqueueAction(async () => {
             const authFailPid = getBrowserPid(newClient) || activeBrowserPid;
             await destroyCurrentClient(`Auth failure: ${msg}`, newClient, authFailPid);
-            scheduleRestart(5000, 'Authentication failure');
+
+            const sessionDir = path.join(sessionDataPath, 'session');
+            try {
+                if (fs.existsSync(sessionDir)) {
+                    fs.rmSync(sessionDir, { recursive: true, force: true });
+                    log('info', 'Cleaned expired session directory after auth failure.', { generation: thisGeneration });
+                }
+            } catch (e) {
+                log('warn', `Failed to clean session directory: ${e.message}`, { generation: thisGeneration });
+            }
+
+            scheduleRestart(3000, 'Authentication failure (fresh QR recovery)');
         }).catch((err) => {
             log('error', `Auth failure cleanup action failed: ${err.message}`);
         });
@@ -792,7 +821,25 @@ async function initializeNewClient(triggerReason = 'Standard') {
         setStatus('DISCONNECTED');
         lastError = `Disconnected: ${reason}`;
         log('warn', `WhatsApp client disconnected. Reason: ${reason}`, { generation: thisGeneration });
-        scheduleRestart(3000, `Disconnected: ${reason}`);
+
+        if (reason === 'LOGOUT' || reason === 'NAVIGATION') {
+            enqueueAction(async () => {
+                const discPid = getBrowserPid(newClient) || activeBrowserPid;
+                await destroyCurrentClient(`Disconnected: ${reason}`, newClient, discPid);
+                const sessionDir = path.join(sessionDataPath, 'session');
+                try {
+                    if (fs.existsSync(sessionDir)) {
+                        fs.rmSync(sessionDir, { recursive: true, force: true });
+                        log('info', 'Session folder removed following remote logout.');
+                    }
+                } catch (e) {}
+                scheduleRestart(2000, `Post-logout fresh client (${reason})`);
+            }).catch((err) => {
+                log('error', `Teardown after disconnect failed: ${err.message}`);
+            });
+        } else {
+            scheduleRestart(3000, `Disconnected: ${reason}`);
+        }
     });
 
     newClient.on('change_state', (state) => {
@@ -1023,12 +1070,37 @@ app.get('/status', (req, res) => {
         lastReadyAt: lastReadyAt,
         lastError: lastError,
         clientGeneration: clientGeneration,
+        queue: sendQueue.getStatus(),
         retryInfo: {
             isWaiting: clientStatus === 'RESTART_WAIT',
             restartCount: restartCount,
             maxBackoffMs: RESTART_MAX_DELAY_MS
         }
     });
+});
+
+// POST /check-number — Verify if a number is registered on WhatsApp
+app.post('/check-number', requireApiKey, async (req, res) => {
+    const { phone } = req.body;
+    if (!phone) {
+        return res.status(400).json({ success: false, error: 'Phone number is required' });
+    }
+    if (clientStatus !== 'READY' || !client) {
+        return res.status(503).json({ success: false, error: 'Service is not READY' });
+    }
+    const phoneResult = normalizePhoneNumber(phone);
+    if (!phoneResult.valid) {
+        return res.status(400).json({ success: false, error: phoneResult.error });
+    }
+    try {
+        if (phoneResult.chatId.endsWith('@g.us')) {
+            return res.json({ success: true, registered: true, chatId: phoneResult.chatId, isGroup: true });
+        }
+        const isRegistered = await client.isRegisteredUser(phoneResult.chatId);
+        return res.json({ success: true, registered: Boolean(isRegistered), chatId: phoneResult.chatId, isGroup: false });
+    } catch (err) {
+        return res.status(500).json({ success: false, error: err.message });
+    }
 });
 
 // POST /send — Send message or media attachment via the in-memory queue
@@ -1089,6 +1161,21 @@ app.post('/send', requireApiKey, async (req, res) => {
                 const err = new Error(`Client disconnected before message could be sent (Status: ${clientStatus})`);
                 err.statusCode = 503;
                 throw err;
+            }
+
+            // Verify number registration for individual recipients
+            if (chatId.endsWith('@c.us')) {
+                try {
+                    const isRegistered = await client.isRegisteredUser(chatId);
+                    if (isRegistered === false) {
+                        const notRegErr = new Error(`Le numéro ${phone} n'est pas enregistré sur WhatsApp.`);
+                        notRegErr.statusCode = 400;
+                        throw notRegErr;
+                    }
+                } catch (regCheckErr) {
+                    if (regCheckErr.statusCode === 400) throw regCheckErr;
+                    // Temporary check network glitch - proceed with send attempt
+                }
             }
 
             let lastResponse = null;

@@ -66,6 +66,15 @@ def _auto_generate_cloud_license() -> dict:
     return payload
 
 
+_VALIDATED_IN_PROCESS: bool = False
+
+
+def _reset_validation_cache() -> None:
+    """Reset the in-process validation cache (useful for testing and license updates)."""
+    global _VALIDATED_IN_PROCESS
+    _VALIDATED_IN_PROCESS = False
+
+
 def _load_license_data() -> dict:
     # Cloud / auto-license: always generate a wildcard license without checking local files.
     if _is_cloud_environment() or os.getenv("AUTO_LICENSE", "").lower() in ("true", "1", "yes"):
@@ -88,16 +97,9 @@ def _load_license_data() -> dict:
         try:
             data = decrypt_license_file(license_path, secret_key)
             if isinstance(data, dict):
-                # If wildcard license, accept immediately
-                if data.get("LICENSED_FINGERPRINT") == _WILDCARD_FINGERPRINT:
-                    return data
-                valid_candidate = data
+                return data
         except Exception:
             continue
-
-    # Return valid candidate if found
-    if "valid_candidate" in locals():
-        return valid_candidate
 
     # If no file decrypted successfully, die
     _die("Fichier de licence manquant ou invalide. Veuillez contacter : 0715125245")
@@ -118,6 +120,9 @@ def validate_or_exit() -> None:
       unreliable in ephemeral containers where the hostname changes on
       every restart.
     """
+    global _VALIDATED_IN_PROCESS
+    if _VALIDATED_IN_PROCESS:
+        return True
 
     license_data = _load_license_data()
 
@@ -156,13 +161,14 @@ def validate_or_exit() -> None:
 
     today = datetime.date.today()
 
-    # Cloud / wildcard licenses (end_date=2099-12-31) are always valid;
-    # skip expiry check for cloud environments to avoid false positives.
-    if not (_is_cloud_environment() or licensed_fingerprint == _WILDCARD_FINGERPRINT):
+    # Cloud environments auto-generate perpetual licenses; skip date check for cloud deployments.
+    # On local environments, all licenses (wildcard or machine-locked) must respect their validity dates.
+    if not _is_cloud_environment():
         if today < start_date:
             _die("La licence n'est pas encore active.")
 
         if today > end_date:
             _die("Votre période d'essai a expiré. Veuillez contacter : 0715125245")
 
+    _VALIDATED_IN_PROCESS = True
     return True

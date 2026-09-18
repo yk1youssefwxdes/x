@@ -150,6 +150,11 @@
                   {% if status_data.info.wid.user %}
                     <span class="badge bg-light text-dark border ms-1 font-monospace">+{{ status_data.info.wid.user }}</span>
                   {% endif %}
+                  {% if status_data.queue and status_data.queue.length > 0 %}
+                    <span class="badge bg-primary-subtle text-primary border border-primary-subtle ms-2 rounded-pill">
+                      <i class="bi bi-stack me-1"></i> File d'attente : {{ status_data.queue.length }} message{{ status_data.queue.length|pluralize }}
+                    </span>
+                  {% endif %}
                 </p>
                 <div class="d-flex flex-wrap gap-2 justify-content-center justify-content-sm-start">
                   <button class="btn btn-sm btn-success rounded-pill px-3 shadow-sm" id="test-whatsapp-modal-btn" type="button">
@@ -413,7 +418,13 @@
         <form id="form-test-whatsapp">
           <div class="mb-3">
             <label for="test-phone" class="form-label fw-bold text-dark small">Numéro du destinataire</label>
-            <input type="text" class="form-control" id="test-phone" placeholder="06XXXXXXXX ou 2126XXXXXXXX" required>
+            <div class="input-group">
+              <input type="text" class="form-control" id="test-phone" placeholder="06XXXXXXXX ou 2126XXXXXXXX" required>
+              <button class="btn btn-outline-secondary" type="button" id="btn-check-phone" title="Vérifier si le numéro est inscrit sur WhatsApp">
+                <i class="bi bi-search me-1"></i> Vérifier
+              </button>
+            </div>
+            <div id="check-phone-feedback" class="small mt-1"></div>
             <div class="form-text">Prend en charge les formats marocains (06, 07, 05, +212...) ou internationaux.</div>
           </div>
           <div class="mb-3">
@@ -821,8 +832,42 @@ $(document).ready(function() {
   // Open Test Message Modal
   $(document).on('click', '#test-whatsapp-modal-btn', function() {
     $("#test-alert-container").empty();
+    $("#check-phone-feedback").empty();
     const modal = new bootstrap.Modal(document.getElementById('modal-test-whatsapp'));
     modal.show();
+  });
+
+  // Verify Phone Number AJAX
+  $("#btn-check-phone").on('click', function() {
+    const phone = $("#test-phone").val().trim();
+    const $btn = $(this);
+    const $feedback = $("#check-phone-feedback");
+    if (!phone) {
+      $feedback.html('<span class="text-danger">Veuillez d\'abord saisir un numéro.</span>');
+      return;
+    }
+    $btn.prop('disabled', true).html('<div class="spinner-border spinner-border-sm" role="status"></div>');
+    $feedback.empty();
+
+    $.ajax({
+      url: "{% url 'core:whatsapp_check_number_ajax' %}",
+      method: "POST",
+      data: { phone: phone },
+      headers: { "X-CSRFToken": "{{ csrf_token }}" },
+      success: function(data) {
+        if (data.registered) {
+          $feedback.html('<span class="text-success fw-bold"><i class="bi bi-check-circle-fill me-1"></i> Numéro actif sur WhatsApp (' + (data.chatId || phone) + ')</span>');
+        } else {
+          $feedback.html('<span class="text-danger fw-bold"><i class="bi bi-x-circle-fill me-1"></i> Numéro non inscrit sur WhatsApp</span>');
+        }
+      },
+      error: function(xhr) {
+        $feedback.html('<span class="text-warning"><i class="bi bi-exclamation-triangle me-1"></i> ' + (xhr.responseJSON?.error || 'Vérification impossible') + '</span>');
+      },
+      complete: function() {
+        $btn.prop('disabled', false).html('<i class="bi bi-search me-1"></i> Vérifier');
+      }
+    });
   });
 
   // Submit Test Message

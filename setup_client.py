@@ -65,27 +65,32 @@ def log_error(msg: str) -> None:
 # ==============================================================================
 
 def get_hardware_fingerprint() -> str:
-    """Collect hardware UUID + Motherboard serial number on Windows / Node on Linux."""
-    if IS_WIN:
-        def _run_ps(cmd: str) -> str:
-            try:
-                full_cmd = ["powershell", "-NoProfile", "-NonInteractive", "-Command", cmd]
-                out = subprocess.check_output(full_cmd, stderr=subprocess.DEVNULL)
-                for ln in out.decode(errors="ignore").splitlines():
-                    ln = ln.strip()
-                    if ln:
-                        return ln
-                return ""
-            except Exception:
-                return ""
+    """Return SHA-256 hash of the stable machine identifiers using canonical core.hardware."""
+    try:
+        sys.path.insert(0, str(PROJECT_ROOT))
+        from core.hardware import get_fingerprint_hash
+        return get_fingerprint_hash()
+    except Exception:
+        if IS_WIN:
+            def _run_ps(cmd: str) -> str:
+                try:
+                    full_cmd = ["powershell", "-NoProfile", "-NonInteractive", "-Command", cmd]
+                    out = subprocess.check_output(full_cmd, stderr=subprocess.DEVNULL)
+                    for ln in out.decode(errors="ignore").splitlines():
+                        ln = ln.strip()
+                        if ln:
+                            return ln
+                    return ""
+                except Exception:
+                    return ""
 
-        uuid = _run_ps("(Get-CimInstance -ClassName Win32_ComputerSystemProduct).UUID")
-        mb = _run_ps("(Get-CimInstance -ClassName Win32_BaseBoard).SerialNumber")
-        combined = f"{uuid}|{mb}"
-    else:
-        combined = platform.node() or ""
+            uuid = _run_ps("(Get-CimInstance -ClassName Win32_ComputerSystemProduct).UUID")
+            mb = _run_ps("(Get-CimInstance -ClassName Win32_BaseBoard).SerialNumber")
+            combined = f"{uuid}|{mb}"
+        else:
+            combined = f"{platform.node() or ''}|"
 
-    return hashlib.sha256(combined.encode("utf-8")).hexdigest()
+        return hashlib.sha256(combined.encode("utf-8")).hexdigest()
 
 
 def verify_license() -> Tuple[bool, str]:

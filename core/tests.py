@@ -466,6 +466,19 @@ class SystemSettingsTestCase(TestCase):
         self.assertEqual(get_setting('LATE_PAYMENT_GRACE_DAYS'), '7')
         self.assertEqual(get_setting('DEFAULT_TEACHER_PAYMENT_METHOD'), 'HOURLY')
 
+    def test_admin_login_page_french_and_dynamic_center_name(self):
+        from core.utils import set_setting
+        set_setting('SCHOOL_NAME', 'Centre')
+        res = self.client.get('/admin/login/')
+        self.assertEqual(res.status_code, 200)
+        content = res.content.decode('utf-8')
+        self.assertIn('Bienvenue sur', content)
+        self.assertIn('Admin Centre', content)
+        self.assertIn('Nom d’utilisateur', content)
+        self.assertIn('Mot de passe', content)
+        self.assertIn('Connexion', content)
+
+
 
 class SchedulingAutoSaveAndHandlingTestCase(TestCase):
     def setUp(self):
@@ -1122,6 +1135,52 @@ class SimplifiedWorkflowsTestCase(TestCase):
         })
         self.assertRedirects(response, reverse('core:courses_list'))
         self.assertEqual(self.group.schedules.count(), 0)
+
+
+class WhatsAppEnhancementsTestCase(TestCase):
+    def setUp(self):
+        from unittest.mock import patch
+        self.patch = patch
+        self.user = get_user_model().objects.create_superuser(
+            username='admin_wa_test',
+            email='admin@wa.test',
+            password='password123'
+        )
+        self.client.force_login(self.user)
+
+    def test_clean_phone_number_multi_formats(self):
+        from core.utils import WhatsAppUtils
+        # Single Moroccan standard
+        self.assertEqual(WhatsAppUtils.clean_phone_number("0611223344"), "212611223344")
+        self.assertEqual(WhatsAppUtils.clean_phone_number("0711223344"), "212711223344")
+        self.assertEqual(WhatsAppUtils.clean_phone_number("0522334455"), "212522334455")
+        # International prefix
+        self.assertEqual(WhatsAppUtils.clean_phone_number("+212 6 11 22 33 44"), "212611223344")
+        self.assertEqual(WhatsAppUtils.clean_phone_number("00212611223344"), "212611223344")
+        # Compound / multi-number in single field
+        self.assertEqual(WhatsAppUtils.clean_phone_number("0611223344 / 0699887766"), "212611223344")
+        self.assertEqual(WhatsAppUtils.clean_phone_number("0711223344, 0699887766"), "212711223344")
+        self.assertEqual(WhatsAppUtils.clean_phone_number("0611223344; 0699887766"), "212611223344")
+
+    def test_whatsapp_check_number_ajax(self):
+        with self.patch('core.utils.WhatsAppServiceAPI.check_number', return_value={'success': True, 'registered': True, 'chatId': '212611223344@c.us'}):
+            res = self.client.post(reverse('core:whatsapp_check_number_ajax'), {'phone': '0611223344'})
+            self.assertEqual(res.status_code, 200)
+            data = res.json()
+            self.assertTrue(data.get('success'))
+            self.assertTrue(data.get('registered'))
+
+    def test_whatsapp_send_ajax_friendly_error_messages(self):
+        with self.patch('core.utils.WhatsAppServiceAPI.send_message', return_value={'success': False, 'error': 'WhatsApp client is not ready (Current status: STARTING)'}):
+            res = self.client.post(reverse('core:whatsapp_send_ajax'), {
+                'phone': '0611223344',
+                'message': 'Test message'
+            })
+            self.assertEqual(res.status_code, 400)
+            data = res.json()
+            self.assertFalse(data.get('success'))
+            self.assertIn("Le service WhatsApp n'est pas encore prêt", data.get('error'))
+
 
 
 

@@ -1112,6 +1112,8 @@ class ServerApp:
         env["WA_SESSION_DIR"]      = str(get_whatsapp_session_dir())
         env["WA_LOG_DIR"]          = str(get_logs_dir())
         env["SCHOOL_ERP_DATA_DIR"] = str(get_data_dir())
+        if sys.platform != "win32":
+            env["WA_DISABLE_SANDBOX"] = "true"
 
         chromium_bin = get_chromium_executable()
         if chromium_bin:

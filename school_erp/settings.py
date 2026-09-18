@@ -138,18 +138,32 @@ if whitenoise:
 
 
 # Settings for school center (configurable)
-SCHOOL_NAME = "Centre My2i"
+SCHOOL_NAME = "Centre"
 SCHOOL_ADDRESS = "Rue Marrakech, Im 16, Ap N 3, 2ème Étage, Khouribga"
 SCHOOL_PHONE = "0707477911 / 0661569522"
 SCHOOL_EMAIL = "contact@centre-tonaroz.com"
 SCHOOL_LOGO_PATH = 'images/tonaroz_logo.svg'
 KIOSK_TIMEOUT = 45
 
+def get_admin_site_title(request=None):
+    try:
+        from core.utils import get_setting
+        name = get_setting('CENTER_NAME') or get_setting('SCHOOL_NAME', 'Centre')
+        return f"Admin {name}"
+    except Exception:
+        return "Admin Centre"
 
+def get_admin_site_header(request=None):
+    try:
+        from core.utils import get_setting
+        name = get_setting('CENTER_NAME') or get_setting('SCHOOL_NAME', 'Centre')
+        return name
+    except Exception:
+        return "Centre"
 
 UNFOLD = {
-    "SITE_TITLE": f"Admin {SCHOOL_NAME}",
-    "SITE_HEADER": SCHOOL_NAME,
+    "SITE_TITLE": get_admin_site_title,
+    "SITE_HEADER": get_admin_site_header,
     "SITE_SYMBOL": "local_library",           # Material symbol name
     "SHOW_HISTORY": True,
     "DARK_MODE": True,

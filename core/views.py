@@ -3385,7 +3385,14 @@ def whatsapp_send_ajax(request):
             )
         return JsonResponse({'success': True, 'message_id': res.get('messageId')})
     else:
-        return JsonResponse({'success': False, 'error': res.get('error', 'Unknown error occurred.')}, status=400)
+        err = res.get('error', 'Erreur inconnue.')
+        if 'not ready' in err.lower() or 'unavailable' in err.lower():
+            err = "Le service WhatsApp n'est pas encore prêt. Veuillez patienter ou vérifier l'état du service."
+        elif 'timed out in queue' in err.lower():
+            err = "L'envoi a expiré dans la file d'attente (délai dépassé)."
+        elif 'could not connect' in err.lower():
+            err = "Impossible de joindre le service WhatsApp. Assurez-vous que le service en arrière-plan est actif."
+        return JsonResponse({'success': False, 'error': err}, status=400)
 
 
 @require_POST
@@ -3410,6 +3417,20 @@ def whatsapp_restart_ajax(request):
         return JsonResponse({'success': True, 'message': res.get('message', 'Restart initiated')})
     else:
         return JsonResponse({'success': False, 'error': res.get('error', 'Restart failed')}, status=400)
+
+
+@require_POST
+def whatsapp_check_number_ajax(request):
+    """
+    AJAX endpoint to check if a phone number is registered on WhatsApp.
+    """
+    phone = request.POST.get('phone', '').strip()
+    if not phone:
+        return JsonResponse({'success': False, 'error': 'Numéro de téléphone requis.'}, status=400)
+
+    from .utils import WhatsAppServiceAPI
+    res = WhatsAppServiceAPI.check_number(phone)
+    return JsonResponse(res)
 
 
 # ==============================================================================
@@ -5334,7 +5355,7 @@ def kiosk_home(request):
         'announcements': announcements,
         'upcoming_events': upcoming_events_list,
         'timeout': timeout,
-        'SCHOOL_NAME': getattr(settings, 'SCHOOL_NAME', 'Centre My2i'),
+        'SCHOOL_NAME': getattr(settings, 'SCHOOL_NAME', 'Centre'),
     })
 
 
@@ -5415,7 +5436,7 @@ def kiosk_select(request):
     return render(request, 'core/kiosk_select.html', {
         'students': students,
         'timeout': timeout,
-        'SCHOOL_NAME': getattr(settings, 'SCHOOL_NAME', 'Centre My2i'),
+        'SCHOOL_NAME': getattr(settings, 'SCHOOL_NAME', 'Centre'),
     })
 
 
@@ -5499,7 +5520,7 @@ def kiosk_student(request):
         'remarks': remarks,
         'announcements': announcements,
         'timeout': timeout,
-        'SCHOOL_NAME': getattr(settings, 'SCHOOL_NAME', 'Centre My2i'),
+        'SCHOOL_NAME': getattr(settings, 'SCHOOL_NAME', 'Centre'),
     })
 
 

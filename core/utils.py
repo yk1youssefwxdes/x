@@ -25,7 +25,7 @@ class SafeDict(dict):
         return f"{{{key}}}"
 
 DEFAULT_SETTINGS = {
-    'SCHOOL_NAME': 'Centre My2i',
+    'SCHOOL_NAME': 'Centre',
     'SCHOOL_SUBTITLE': 'Soutien Scolaire & Langues',
     'SCHOOL_ADDRESS': 'Rue Marrakech, Im 16, Ap N 3, 2ème Étage, Khouribga',
     'SCHOOL_PHONE': '0707477911 / 0661569522',
@@ -1581,7 +1581,7 @@ def generate_receipt_pdf(payment) -> BytesIO:
     p.setFont("Helvetica-Oblique", 8)
     thank_you_note = get_setting('RECEIPT_FOOTER_THANK_YOU', 'Merci pour votre confiance ! - شكراً لثقتكم')
     p.drawCentredString(width/2, 40, thank_you_note)
-    school_name = get_setting('SCHOOL_NAME', 'Centre My2i')
+    school_name = get_setting('SCHOOL_NAME', 'Centre')
     school_phone = get_setting('SCHOOL_PHONE', '')
     school_subtitle = get_setting('SCHOOL_SUBTITLE', 'Soutien Scolaire & Langues')
     p.drawCentredString(width/2, 28, f"{school_name} - {school_subtitle} - Tél: {school_phone}")
@@ -1797,7 +1797,7 @@ def generate_teacher_payslip_pdf(teacher, start_date, end_date, result) -> Bytes
     elements = []
     
     # 1. School Information & Header
-    school_name = getattr(settings, 'SCHOOL_NAME', 'Centre My2i')
+    school_name = getattr(settings, 'SCHOOL_NAME', 'Centre')
     school_address = getattr(settings, 'SCHOOL_ADDRESS', '')
     school_phone = getattr(settings, 'SCHOOL_PHONE', '')
     school_email = getattr(settings, 'SCHOOL_EMAIL', '')
@@ -2493,23 +2493,38 @@ class WhatsAppUtils:
             >>> WhatsAppUtils.clean_phone_number("+212 6 12 34 56 78")
             '212612345678'
         """
-        # Remove all non-digit characters
-        cleaned = re.sub(r'\D', '', phone)
+        if not phone:
+            return ""
 
-        # Morocco: local numbers starting with 06, 07, 05 (10 digits)
-        if cleaned.startswith(('06', '07', '05')) and len(cleaned) == 10:
-            cleaned = '212' + cleaned[1:]  # drop leading 0, prepend 212
-        # Morocco: local without leading 0 — 6x, 7x, 5x (9 digits)
-        elif cleaned.startswith(('6', '7', '5')) and len(cleaned) == 9:
-            cleaned = '212' + cleaned
-        # Morocco: 00212 prefix — normalise to 212
-        elif cleaned.startswith('00212'):
-            cleaned = cleaned[2:]  # strip leading 00
-        # Strip any other leading zeros (generic fallback)
-        else:
-            cleaned = cleaned.lstrip('0') or cleaned
+        # Handle multiple numbers separated by slash, comma, semicolon, newline, or pipe
+        parts = re.split(r'[/,;\n|]', str(phone))
+        for part in parts:
+            part = part.strip()
+            if not part:
+                continue
 
-        return cleaned
+            # Remove all non-digit characters
+            cleaned = re.sub(r'\D', '', part)
+            if not cleaned:
+                continue
+
+            # Morocco: local numbers starting with 06, 07, 05 (10 digits)
+            if cleaned.startswith(('06', '07', '05')) and len(cleaned) == 10:
+                return '212' + cleaned[1:]  # drop leading 0, prepend 212
+            # Morocco: local without leading 0 — 6x, 7x, 5x (9 digits)
+            elif cleaned.startswith(('6', '7', '5')) and len(cleaned) == 9:
+                return '212' + cleaned
+            # Morocco: 00212 prefix — normalise to 212
+            elif cleaned.startswith('00212'):
+                return cleaned[2:]  # strip leading 00
+            # Already international with Morocco prefix (212 followed by 9 digits)
+            elif cleaned.startswith('212') and len(cleaned) >= 11:
+                return cleaned
+            # International numbers (8 to 15 digits)
+            elif len(cleaned) >= 8:
+                return cleaned.lstrip('0') or cleaned
+
+        return ""
     
     @staticmethod
     def generate_chat_link(
@@ -2866,6 +2881,32 @@ class WhatsAppServiceAPI:
                 'error': str(e)
             }
 
+    @classmethod
+    def check_number(cls, phone: str, timeout: float = 5.0) -> dict:
+        """
+        Verify if a phone number is registered on WhatsApp.
+        Returns:
+            dict: { 'success': True, 'registered': True/False, 'chatId': ... }
+        """
+        url = f"{cls.BASE_URL}/check-number"
+        payload = json.dumps({'phone': phone}).encode('utf-8')
+        headers = {'Content-Type': 'application/json'}
+        api_key = getattr(settings, 'WHATSAPP_API_KEY', '')
+        if api_key:
+            headers['X-API-Key'] = api_key
+
+        req = urllib.request.Request(url, data=payload, headers=headers, method='POST')
+        try:
+            with urllib.request.urlopen(req, timeout=timeout) as response:
+                return json.loads(response.read().decode('utf-8'))
+        except urllib.error.HTTPError as e:
+            try:
+                return json.loads(e.read().decode('utf-8'))
+            except Exception:
+                return {'success': False, 'error': f"HTTP Error {e.code}: {e.reason}"}
+        except Exception as e:
+            return {'success': False, 'error': str(e)}
+
 
 def get_student_pending_group_invites(student, enrollments=None):
     """
@@ -2915,7 +2956,7 @@ def send_whatsapp_group_invites(student, enrollments=None) -> list:
         lines.append(f"• {grp.name}{subject_info} : {grp.whatsapp_group_link.strip()}")
     group_links_text = "\n".join(lines)
 
-    school_name = get_setting('SCHOOL_NAME', getattr(settings, 'SCHOOL_NAME', 'Centre My2i'))
+    school_name = get_setting('SCHOOL_NAME', getattr(settings, 'SCHOOL_NAME', 'Centre'))
     parent_name = student.parent_name or "Parent"
 
     default_template = (
