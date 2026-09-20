@@ -506,7 +506,7 @@ class CourseGroupAdmin(ModelAdmin, ImportExportModelAdmin):
     list_display = ('name', 'subject', 'level', 'schedules_display', 
                     'teacher', 'price_display', 'student_count', 'status_badge')
     list_filter = ('is_active', 'schedules__day', 'teacher', 'schedules__room', 'level')
-    search_fields = ('name', 'subject', 'level')
+    search_fields = ('name', 'subject', 'level__name')
     autocomplete_fields = ['teacher']
     inlines = [CourseGroupScheduleInline]
     

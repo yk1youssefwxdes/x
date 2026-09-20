@@ -6,6 +6,9 @@
 # Chromium path on Nixpacks images: /nix/store/.../bin/chromium
 # We set CHROME_PATH via the environment so whatsapp-web.js / Puppeteer finds it.
 
+[variables]
+PUPPETEER_SKIP_CHROMIUM_DOWNLOAD = "true"
+
 # ── System packages (Nix) ────────────────────────────────────────────────────
 [phases.setup]
 nixPkgs = [

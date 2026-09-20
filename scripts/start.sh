@@ -5,7 +5,16 @@ echo "=================================================="
 echo "  Starting School ERP Production Services"
 echo "=================================================="
 
-# 1. Start Node.js WhatsApp automation service in background
+# 1. Auto-detect Chromium path if not already provided
+if [ -z "$CHROME_PATH" ]; then
+    DETECTED_CHROME=$(which chromium 2>/dev/null || which chromium-browser 2>/dev/null || which google-chrome-stable 2>/dev/null || which google-chrome 2>/dev/null || true)
+    if [ -n "$DETECTED_CHROME" ]; then
+        export CHROME_PATH="$DETECTED_CHROME"
+        echo "[*] Auto-detected Chromium at: $CHROME_PATH"
+    fi
+fi
+
+# 2. Start Node.js WhatsApp automation service in background
 if [ -d "whatsapp_service" ]; then
     echo "[*] Launching WhatsApp automation background service..."
     (cd whatsapp_service && node server.js) &

@@ -32,16 +32,49 @@ const MAX_LOG_SIZE_BYTES = 10 * 1024 * 1024; // 10MB per log file before rotatio
 
 // ── Chrome Path Resolution ───────────────────────────────────────────────────
 function resolveChromePath() {
-    const specified = process.env.CHROME_PATH;
+    const specified = process.env.CHROME_PATH || process.env.PUPPETEER_EXECUTABLE_PATH;
     if (specified) {
         const resolved = path.resolve(specified);
         if (fs.existsSync(resolved)) {
             return resolved;
         } else {
-            console.warn(`[CONFIG] WARNING: CHROME_PATH "${specified}" does not exist. Falling back to Puppeteer bundled browser.`);
-            return null;
+            console.warn(`[CONFIG] WARNING: CHROME_PATH "${specified}" does not exist. Falling back to auto-detection.`);
         }
     }
+
+    // Auto-detect system Chromium/Chrome in Linux / Docker / Nix environments
+    if (process.platform === 'linux') {
+        const candidates = [
+            'chromium',
+            'chromium-browser',
+            'google-chrome-stable',
+            'google-chrome',
+            '/usr/bin/chromium',
+            '/usr/bin/chromium-browser',
+            '/usr/bin/google-chrome-stable',
+            '/usr/bin/google-chrome'
+        ];
+
+        for (const candidate of candidates) {
+            try {
+                if (candidate.startsWith('/')) {
+                    if (fs.existsSync(candidate)) {
+                        console.log(`[CONFIG] Auto-detected system browser at: ${candidate}`);
+                        return candidate;
+                    }
+                } else {
+                    const detected = execSync(`which ${candidate} 2>/dev/null`, { encoding: 'utf8' }).trim();
+                    if (detected && fs.existsSync(detected)) {
+                        console.log(`[CONFIG] Auto-detected system browser via which (${candidate}) at: ${detected}`);
+                        return detected;
+                    }
+                }
+            } catch (e) {
+                // ignore
+            }
+        }
+    }
+
     // Default: allow Puppeteer to use its configured/bundled browser
     return null;
 }
