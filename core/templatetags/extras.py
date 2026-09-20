@@ -25,6 +25,17 @@ def dict_key(dictionary, key):
 
 
 @register.filter
+def get_item(dictionary, key):
+    """
+    Alias for dict_key.
+    Usage: {{ my_dict|get_item:key }}
+    """
+    if not isinstance(dictionary, dict):
+        return None
+    return dictionary.get(key)
+
+
+@register.filter
 def has_role(user, role_names):
     """
     Checks if a user belongs to any of the specified roles (comma-separated).

@@ -125,7 +125,7 @@
         <!-- Pédagogie & RH Dropdown -->
         <div class="nav-dropdown">
           <button type="button"
-            class="nav-item-link {% active_if 'courses_list' 'levels_list' 'level_categories_list' 'teachers_list' 'teacher_detail' 'rooms_list' 'teacher_payroll' %}"
+            class="nav-item-link {% active_if 'courses_list' 'levels_list' 'level_categories_list' 'teachers_list' 'teacher_detail' 'rooms_list' 'teacher_payroll' 'payroll_calculator' %}"
             title="Pédagogie" aria-haspopup="true" aria-expanded="false" aria-controls="pedagogie-menu">
             <i class="bi bi-mortarboard-fill" aria-hidden="true"></i>
             <span class="nav-label-text">Pédagogie</span>
@@ -152,6 +152,9 @@
             </a> {% endcomment %}
             <a class="nav-dropdown-item {% active_if 'teacher_payroll' %}" href="{% url 'core:teacher_payroll' %}">
               <i class="bi bi-calculator-fill" style="color: var(--danger);" aria-hidden="true"></i> Paie professeurs
+            </a>
+            <a class="nav-dropdown-item {% active_if 'payroll_calculator' %}" href="{% url 'core:payroll_calculator' %}">
+              <i class="bi bi-calculator" style="color: #6366f1;" aria-hidden="true"></i> Simulateur / Calculateur de paie
             </a>
             <a class="nav-dropdown-item {% active_if 'attendance_report' %}" href="{% url 'core:attendance_report' %}">
               <i class="bi bi-clipboard2-check-fill" style="color: var(--success);" aria-hidden="true"></i> Rapport de

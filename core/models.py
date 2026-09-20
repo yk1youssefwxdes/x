@@ -3,6 +3,7 @@ import random
 from datetime import date, datetime
 from decimal import Decimal
 
+from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.core.validators import MinValueValidator
 from django.db import connection, models, transaction
@@ -273,9 +274,10 @@ def check_teacher_availability(teacher, day, start_time, end_time, date_val=None
 
 
 class LevelCategory(models.Model):
-    """Catégorie de niveau académique"""
+    """Catégorie de niveau académique ou non-académique"""
     name = models.CharField(max_length=100, unique=True, verbose_name="Nom de la catégorie")
     code = models.CharField(max_length=50, unique=True, verbose_name="Code")
+    is_academic = models.BooleanField(default=True, verbose_name="Catégorie académique")
 
     class Meta:
         verbose_name = "Catégorie de niveau"
@@ -291,8 +293,13 @@ class LevelCategory(models.Model):
         super().save(*args, **kwargs)
 
 
+class LevelType(models.TextChoices):
+    ACADEMIC = 'ACADEMIC', 'Académique'
+    NON_ACADEMIC = 'NON_ACADEMIC', 'Non académique'
+
+
 class Level(models.Model):
-    """Niveau académique"""
+    """Niveau (académique ou non académique)"""
     
     name = models.CharField(max_length=100, unique=True, verbose_name="Nom du niveau")
     category = models.ForeignKey(
@@ -301,14 +308,33 @@ class Level(models.Model):
         related_name='levels',
         verbose_name="Catégorie"
     )
+    level_type = models.CharField(
+        max_length=20,
+        choices=LevelType.choices,
+        default=LevelType.ACADEMIC,
+        verbose_name="Type de niveau"
+    )
+    order = models.PositiveIntegerField(default=0, verbose_name="Ordre de progression")
+    next_level = models.ForeignKey(
+        'self',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='previous_levels',
+        verbose_name="Niveau suivant"
+    )
     
     class Meta:
         verbose_name = "Niveau"
         verbose_name_plural = "Niveaux"
-        ordering = ['category', 'name']
+        ordering = ['category', 'order', 'name']
     
     def __str__(self):
         return self.name
+
+    @property
+    def is_academic(self):
+        return self.level_type == LevelType.ACADEMIC
 
     def get_category_display(self):
         return self.category.name if self.category else ""
@@ -331,10 +357,16 @@ class CourseGroup(models.Model):
     level = models.ForeignKey(
         Level,
         on_delete=models.SET_NULL,
-        related_name='course_groups',
-        verbose_name="Niveau",
+        related_name='legacy_course_groups',
+        verbose_name="Niveau principal (legacy)",
         null=True,
         blank=True
+    )
+    levels = models.ManyToManyField(
+        Level,
+        related_name='course_groups',
+        blank=True,
+        verbose_name="Niveaux"
     )
     
     monthly_price = models.DecimalField(
@@ -373,6 +405,26 @@ class CourseGroup(models.Model):
     
     def __str__(self):
         return f"{self.name} ({self.subject})"
+
+    @property
+    def levels_display(self):
+        """Returns comma-separated names of all associated levels."""
+        lvls = list(self.levels.all())
+        if lvls:
+            return ", ".join(l.name for l in lvls)
+        if self.level:
+            return self.level.name
+        return "Sans niveau"
+
+    @property
+    def levels_list(self):
+        """Returns list of Level objects, falling back to legacy level."""
+        lvls = list(self.levels.all())
+        if lvls:
+            return lvls
+        if self.level:
+            return [self.level]
+        return []
 
 
 class CourseGroupSchedule(models.Model):
@@ -636,6 +688,27 @@ class Student(models.Model):
             raise RuntimeError("Unable to assign a unique student matricule")
 
         super().save(*args, **kwargs)
+
+
+class StudentLevelHistory(models.Model):
+    """Historique de progression de niveau pour un élève"""
+    student = models.ForeignKey(Student, on_delete=models.CASCADE, related_name='level_history', verbose_name="Élève")
+    from_level = models.ForeignKey(Level, on_delete=models.SET_NULL, null=True, blank=True, related_name='+', verbose_name="Ancien niveau")
+    to_level = models.ForeignKey(Level, on_delete=models.SET_NULL, null=True, blank=True, related_name='+', verbose_name="Nouveau niveau")
+    changed_at = models.DateTimeField(default=timezone.now, verbose_name="Date de changement")
+    changed_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, verbose_name="Effectué par")
+    reason = models.CharField(max_length=255, default="Progression automatique", verbose_name="Motif")
+    notes = models.TextField(blank=True, verbose_name="Notes")
+
+    class Meta:
+        verbose_name = "Historique de niveau"
+        verbose_name_plural = "Historiques de niveaux"
+        ordering = ['-changed_at']
+
+    def __str__(self):
+        from_str = self.from_level.name if self.from_level else "Sans niveau"
+        to_str = self.to_level.name if self.to_level else "Sans niveau"
+        return f"{self.student.name} : {from_str} → {to_str} ({self.changed_at.strftime('%d/%m/%Y')})"
 
 
 

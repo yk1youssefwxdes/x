@@ -28,7 +28,7 @@ def load_courses(student=None):
 
         # Show courses matching the student's level, plus level-agnostic courses
         courses = courses.filter(
-            Q(level=student.level) | Q(level__isnull=True)
-        )
+            Q(levels=student.level) | Q(level=student.level) | (Q(levels__isnull=True) & Q(level__isnull=True))
+        ).distinct()
 
     return courses.order_by('name')

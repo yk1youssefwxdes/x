@@ -15,7 +15,7 @@ from dateutil.relativedelta import relativedelta
 # Importer les modèles
 from .models import (
     Room, Teacher, CourseGroup, CourseGroupSchedule,
-    Student, Enrollment, Payment, Attendance, Session, Level, LevelCategory,
+    Student, Enrollment, Payment, Attendance, Session, Level, LevelCategory, LevelType,
     TeacherLeave, TeacherAvailability, TeacherPayment, Holiday, MakeupSession,
     WhatsAppSendLog, Announcement, ScheduleLock, SessionChangeHistory,
     TeacherPaymentMethod, TeacherPaymentType, TeacherLeaveType, PaymentStatus,
@@ -232,44 +232,74 @@ def generate_fixtures(
     rooms = list(Room.objects.all())
 
     # ==================== 3. CATÉGORIES & NIVEAUX ====================
-    print("[+] Création des catégories académiques et des niveaux...")
+    print("[+] Création des catégories académiques et non-académiques et des niveaux...")
     CATEGORIES = [
-        ('GARDERIE', 'La Garderie'),
-        ('PRIMAIRE', 'Primaire'),
-        ('COLLEGE', 'Collège'),
-        ('LYCEE', 'Lycée'),
+        # Académiques
+        ('GARDERIE', 'La Garderie', True),
+        ('PRIMAIRE', 'Primaire', True),
+        ('COLLEGE', 'Collège', True),
+        ('LYCEE', 'Lycée', True),
+        # Non-académiques
+        ('LANGUES', 'Langues & Communication', False),
+        ('PARASCOLAIRE', 'Parascolaire & Activités', False),
+        ('SOUTIEN_LIBRE', 'Formation & Soutien Libre', False),
     ]
     category_map = {}
-    for code, name in CATEGORIES:
-        cat = LevelCategory(code=code, name=name)
+    for code, name, is_acad in CATEGORIES:
+        cat = LevelCategory(code=code, name=name, is_academic=is_acad)
         cat.full_clean()
         cat.save()
         category_map[code] = cat
 
-    LEVELS_DATA = [
-        ('Petite Section (PS)', 'GARDERIE'),
-        ('Moyenne Section (MS)', 'GARDERIE'),
-        ('Grande Section (GS)', 'GARDERIE'),
-        ('1AP', 'PRIMAIRE'),
-        ('2AP', 'PRIMAIRE'),
-        ('3AP', 'PRIMAIRE'),
-        ('4AP', 'PRIMAIRE'),
-        ('5AP', 'PRIMAIRE'),
-        ('6AP', 'PRIMAIRE'),
-        ('1ASC', 'COLLEGE'),
-        ('2ASC', 'COLLEGE'),
-        ('3ASC', 'COLLEGE'),
-        ('Tronc Commun (TC)', 'LYCEE'),
-        ('1ère année Bac (1Bac)', 'LYCEE'),
-        ('2ème année Bac (2Bac)', 'LYCEE'),
+    ACADEMIC_LEVELS_DATA = [
+        ('Petite Section (PS)', 'GARDERIE', 1),
+        ('Moyenne Section (MS)', 'GARDERIE', 2),
+        ('Grande Section (GS)', 'GARDERIE', 3),
+        ('1AP', 'PRIMAIRE', 4),
+        ('2AP', 'PRIMAIRE', 5),
+        ('3AP', 'PRIMAIRE', 6),
+        ('4AP', 'PRIMAIRE', 7),
+        ('5AP', 'PRIMAIRE', 8),
+        ('6AP', 'PRIMAIRE', 9),
+        ('1ASC', 'COLLEGE', 10),
+        ('2ASC', 'COLLEGE', 11),
+        ('3ASC', 'COLLEGE', 12),
+        ('Tronc Commun (TC)', 'LYCEE', 13),
+        ('1ère année Bac (1Bac)', 'LYCEE', 14),
+        ('2ème année Bac (2Bac)', 'LYCEE', 15),
     ]
-    levels_objs = []
-    for name, cat_code in LEVELS_DATA:
-        lvl = Level(name=name, category=category_map[cat_code])
+    academic_objs = []
+    for name, cat_code, ord_num in ACADEMIC_LEVELS_DATA:
+        lvl = Level(name=name, category=category_map[cat_code], level_type=LevelType.ACADEMIC, order=ord_num)
         lvl.full_clean()
-        levels_objs.append(lvl)
-    Level.objects.bulk_create(levels_objs)
+        lvl.save()
+        academic_objs.append(lvl)
+
+    # Chainer les niveaux académiques consécutifs
+    for i in range(len(academic_objs) - 1):
+        academic_objs[i].next_level = academic_objs[i + 1]
+        academic_objs[i].save(update_fields=['next_level'])
+
+    NON_ACADEMIC_LEVELS_DATA = [
+        ('A1 - Débutant', 'LANGUES', 1),
+        ('A2 - Élémentaire', 'LANGUES', 2),
+        ('B1 - Intermédiaire', 'LANGUES', 3),
+        ('B2 - Avancé', 'LANGUES', 4),
+        ('C1 - Expert', 'LANGUES', 5),
+        ('Business English', 'LANGUES', 6),
+        ('Club Robotique & IA', 'PARASCOLAIRE', 1),
+        ('Club Échecs', 'PARASCOLAIRE', 2),
+        ('Atelier Théâtre & Éloquence', 'PARASCOLAIRE', 3),
+        ('Remise à niveau continue', 'SOUTIEN_LIBRE', 1),
+        ('Préparation Concours', 'SOUTIEN_LIBRE', 2),
+    ]
+    for name, cat_code, ord_num in NON_ACADEMIC_LEVELS_DATA:
+        lvl = Level(name=name, category=category_map[cat_code], level_type=LevelType.NON_ACADEMIC, order=ord_num)
+        lvl.full_clean()
+        lvl.save()
+
     db_levels = list(Level.objects.all())
+    academic_db_levels = list(Level.objects.filter(level_type=LevelType.ACADEMIC))
 
     # ==================== 4. PROFESSEURS ====================
     print(f"[+] Création de {num_teachers} professeurs...")
@@ -385,6 +415,11 @@ def generate_fixtures(
         # Sauvegarde directe pour bypasser les signaux
         from django.db.models import Model as _BaseModel
         _BaseModel.save(course)
+        # Assigner les niveaux au groupe (dont ~35% avec multi-niveaux)
+        if level.next_level and random.random() < 0.35:
+            course.levels.set([level, level.next_level])
+        else:
+            course.levels.set([level])
         courses.append(course)
         
         first_day = None
@@ -524,7 +559,11 @@ def generate_fixtures(
         parent_name = generate_full_name()
         address = f"{random.randint(1, 200)} Boulevard Zerktouni, Casablanca"
         date_of_birth = date(random.randint(2005, 2018), random.randint(1, 12), random.randint(1, 28))
-        level = random.choice(db_levels)
+        # 80% des élèves en niveau académique, 20% en parascolaire/langues
+        if random.random() < 0.8 and academic_db_levels:
+            level = random.choice(academic_db_levels)
+        else:
+            level = random.choice(db_levels)
         main_school = random.choice(MOROCCAN_SCHOOLS)
         
         matricule = generate_unique_matricule(int(year_prefix))

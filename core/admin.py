@@ -17,7 +17,7 @@ from .models import (
     Room, Teacher, CourseGroup, Student, Enrollment, Payment, Attendance, Session,
     CourseGroupSchedule, Level, LevelCategory, WhatsAppSendLog, Holiday,
     TeacherLeave, TeacherAvailability, MakeupSession, Announcement, TeacherPayment,
-    SessionChangeHistory, ScheduleLock
+    SessionChangeHistory, ScheduleLock, StudentLevelHistory
 )
 from django.core.exceptions import ValidationError
 
@@ -423,7 +423,8 @@ class RoomAdmin(ModelAdmin, ImportExportModelAdmin):
 
 @admin.register(LevelCategory)
 class LevelCategoryAdmin(ModelAdmin):
-    list_display = ('name', 'code', 'level_count')
+    list_display = ('name', 'code', 'is_academic', 'level_count')
+    list_filter = ('is_academic',)
     search_fields = ('name', 'code')
     ordering = ('name',)
     readonly_fields = ('code',)
@@ -435,9 +436,12 @@ class LevelCategoryAdmin(ModelAdmin):
 
 @admin.register(Level)
 class LevelAdmin(ModelAdmin, ImportExportModelAdmin):
-    list_display = ('name', 'category', 'course_group_count', 'student_count')
-    search_fields = ('name',)
-    ordering = ('category__name', 'name')
+    list_display = ('name', 'level_type', 'order', 'category', 'next_level', 'course_group_count', 'student_count')
+    list_editable = ('order',)
+    list_display_links = ('name',)
+    list_filter = ('level_type', 'category')
+    search_fields = ('name', 'category__name')
+    ordering = ('category__name', 'order', 'name')
     
     def course_group_count(self, obj):
         return obj.course_groups.count()
@@ -503,16 +507,17 @@ class CourseGroupAdmin(ModelAdmin, ImportExportModelAdmin):
     resource_class = CourseGroupResource
     import_form_class = ImportForm
     export_form_class = ExportForm
-    list_display = ('name', 'subject', 'level', 'schedules_display', 
+    filter_horizontal = ('levels',)
+    list_display = ('name', 'subject', 'levels_badge', 'schedules_display', 
                     'teacher', 'price_display', 'student_count', 'status_badge')
-    list_filter = ('is_active', 'schedules__day', 'teacher', 'schedules__room', 'level')
-    search_fields = ('name', 'subject', 'level__name')
+    list_filter = ('is_active', 'levels', 'schedules__day', 'teacher', 'schedules__room')
+    search_fields = ('name', 'subject', 'levels__name', 'level__name')
     autocomplete_fields = ['teacher']
     inlines = [CourseGroupScheduleInline]
     
     fieldsets = (
         ('Informations générales', {
-            'fields': ('name', 'subject', 'level', 'monthly_price')
+            'fields': ('name', 'subject', 'levels', 'level', 'monthly_price')
         }),
         ('Assignation', {
             'fields': ('teacher',)
@@ -521,6 +526,16 @@ class CourseGroupAdmin(ModelAdmin, ImportExportModelAdmin):
             'fields': ('is_active',)
         }),
     )
+
+    def levels_badge(self, obj):
+        lvls = list(obj.levels.all())
+        if lvls:
+            badges = "".join(f'<span style="background: #e0e7ff; color: #4338ca; padding: 2px 6px; border-radius: 4px; margin-right: 4px; font-size: 11px; font-weight: 600;">{l.name}</span>' for l in lvls)
+            return mark_safe(badges)
+        if obj.level:
+            return obj.level.name
+        return mark_safe('<span style="color: gray;">Sans niveau</span>')
+    levels_badge.short_description = 'Niveaux'
     
     def schedules_display(self, obj):
         schedules = obj.schedules.all()
@@ -561,6 +576,22 @@ class CourseGroupAdmin(ModelAdmin, ImportExportModelAdmin):
     status_badge.short_description = 'Statut'
 
 
+class StudentLevelHistoryInline(TabularInline):
+    model = StudentLevelHistory
+    extra = 0
+    readonly_fields = ('changed_at', 'from_level', 'to_level', 'changed_by', 'reason')
+    can_delete = False
+
+
+@admin.register(StudentLevelHistory)
+class StudentLevelHistoryAdmin(ModelAdmin):
+    list_display = ('student', 'from_level', 'to_level', 'changed_at', 'changed_by', 'reason')
+    list_filter = ('changed_at', 'from_level', 'to_level')
+    search_fields = ('student__name', 'reason', 'notes')
+    readonly_fields = ('changed_at',)
+    ordering = ('-changed_at',)
+
+
 @admin.register(Student)
 class StudentAdmin(ModelAdmin, ImportExportModelAdmin):
     resource_class = StudentResource
@@ -570,7 +601,7 @@ class StudentAdmin(ModelAdmin, ImportExportModelAdmin):
                     'payment_status_badge', 'active_badge')
     list_filter = ('is_active', PaymentStatusFilter, 'enrollment__course_group', 'level')
     search_fields = ('name', 'phone', 'parent_contact', 'parent_contact_2', 'parent_name', 'main_school')
-    inlines = [EnrollmentInline, PaymentInline]
+    inlines = [EnrollmentInline, PaymentInline, StudentLevelHistoryInline]
     list_select_related = ('level',)
 
     def changelist_view(self, request, extra_context=None):

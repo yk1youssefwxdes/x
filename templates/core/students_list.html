@@ -98,6 +98,14 @@
     <a href="{% url 'core:print_students_list' %}" class="btn btn-outline-secondary" title="Imprimer" aria-label="Imprimer la liste des élèves">
       <i class="bi bi-printer" aria-hidden="true"></i>
     </a>
+    <button type="button" class="btn btn-warning text-dark fw-bold d-flex align-items-center gap-1 shadow-sm" data-bs-toggle="modal" data-bs-target="#autoUpgradeAcademicModal" title="Faire progresser automatiquement tous les élèves académiques vers leur niveau suivant">
+      <i class="bi bi-mortarboard-fill" aria-hidden="true"></i>
+      <span class="d-none d-md-inline">Passage Annuel Académique</span>
+    </button>
+    <button type="button" class="btn btn-outline-primary d-flex align-items-center gap-1" data-bs-toggle="modal" data-bs-target="#bulkPromoteModal" title="Promotion groupée de niveau">
+      <i class="bi bi-arrow-up-circle" aria-hidden="true"></i>
+      <span class="d-none d-sm-inline">Promotion groupée</span>
+    </button>
     <a href="{% url 'core:student_create' %}" class="btn btn-primary">
       <i class="bi bi-plus-lg" aria-hidden="true"></i> Ajouter un élève
     </a>
@@ -224,6 +232,8 @@
         {% for student in students %}
           {% with status=student.computed_payment_status %}
           <tr class="student-row {% if status == 'OK' %}row-ok{% else %}row-unpaid{% endif %}"
+              data-student-id="{{ student.id }}"
+              data-level-id="{{ student.level.id|default:'' }}"
               data-href="{% url 'core:student_page' student.id %}"
               data-name="{{ student.name|lower }}"
               data-contact="{{ student.parent_contact|lower }}"
@@ -371,9 +381,151 @@
       {% endif %}
     </ul>
   </nav>
-{% endif %}
+<!-- Bulk Promote Modal -->
+<div class="modal fade" id="bulkPromoteModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title"><i class="bi bi-arrow-up-circle text-primary me-2"></i>Promotion groupée de niveau</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <form method="post" action="{% url 'core:students_bulk_promote' %}">
+        {% csrf_token %}
+        <div class="modal-body">
+          <div class="alert alert-info py-2 small mb-3">
+            <i class="bi bi-info-circle me-1"></i> Cette action permet de faire progresser plusieurs élèves vers leur niveau supérieur configuré ou vers un niveau spécifique, en archivant leur historique.
+          </div>
+          
+          <div class="mb-3">
+            <label class="form-label fw-bold">Élèves à promouvoir</label>
+            <div class="form-check mb-2">
+              <input class="form-check-input" type="radio" name="promote_scope" id="scopePage" value="page" checked onchange="togglePromoteScope()">
+              <label class="form-check-label" for="scopePage">
+                Tous les élèves affichés sur la page courante ({{ students|length }} élèves)
+              </label>
+            </div>
+            <div class="form-check">
+              <input class="form-check-input" type="radio" name="promote_scope" id="scopeLevel" value="level" onchange="togglePromoteScope()">
+              <label class="form-check-label" for="scopeLevel">
+                Élèves d'un niveau spécifique...
+              </label>
+            </div>
+          </div>
+
+          <div class="mb-3" id="sourceLevelDiv" style="display:none;">
+            <label for="sourceLevelSelect" class="form-label fw-bold">Niveau d'origine des élèves</label>
+            <select id="sourceLevelSelect" class="form-select" onchange="updateFilteredStudentIds()">
+              <option value="">-- Sélectionner le niveau actuel --</option>
+              {% for lvl in all_levels %}
+                <option value="{{ lvl.id }}">{{ lvl.name }}</option>
+              {% endfor %}
+            </select>
+          </div>
+
+          <input type="hidden" name="student_ids_csv" id="studentIdsCsv" value="{% for s in students %}{{ s.id }}{% if not forloop.last %},{% endif %}{% endfor %}">
+
+          <div class="mb-3">
+            <label for="bulkTargetLevel" class="form-label fw-bold">Niveau de destination</label>
+            <select name="target_level_id" id="bulkTargetLevel" class="form-select">
+              <option value="" selected>★ Progression automatique (vers le niveau supérieur de chaque élève)</option>
+              {% for lvl in all_levels %}
+                <option value="{{ lvl.id }}">Forcer vers : {{ lvl.name }} ({{ lvl.category.name|default:"Général" }})</option>
+              {% endfor %}
+            </select>
+            <div class="form-text">Si laissé sur « Progression automatique », le système utilisera le « Niveau suivant » configuré pour chaque niveau.</div>
+          </div>
+
+          <div class="mb-3">
+            <label for="bulkReason" class="form-label fw-bold">Motif de la promotion</label>
+            <input type="text" name="reason" id="bulkReason" class="form-control" value="Progression collective annuelle">
+          </div>
+
+          <div class="mb-3">
+            <label for="bulkNotes" class="form-label">Notes optionnelles</label>
+            <textarea name="notes" id="bulkNotes" class="form-control" rows="2" placeholder="Commentaires archivés dans l'historique de chaque élève..."></textarea>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Annuler</button>
+          <button type="submit" class="btn btn-primary fw-bold">
+            <i class="bi bi-check-circle me-1"></i> Lancer la promotion
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- Auto Upgrade Academic Modal (1-Click) -->
+<div class="modal fade" id="autoUpgradeAcademicModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header bg-warning text-dark">
+        <h5 class="modal-title fw-bold">
+          <i class="bi bi-mortarboard-fill me-2"></i>Passage Annuel Académique (1-Clic)
+        </h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <form method="post" action="{% url 'core:academic_auto_upgrade' %}">
+        {% csrf_token %}
+        <div class="modal-body p-4">
+          <div class="alert alert-warning py-2 small mb-3">
+            <i class="bi bi-exclamation-triangle-fill me-1"></i>
+            <strong>Action globale pour la rentrée scolaire :</strong>
+            Tous les élèves inscrits dans un <strong>niveau académique</strong> (Garderie, Primaire, Collège, Lycée) progresseront automatiquement vers leur <strong>niveau supérieur configuré</strong> (ex: <em>1AP → 2AP, 3ASC → TC, 1Bac → 2Bac</em>).
+          </div>
+
+          <div class="card bg-light border-0 p-3 mb-3">
+            <h6 class="fw-bold small mb-2 text-dark"><i class="bi bi-shield-check text-success me-1"></i> Règles appliquées :</h6>
+            <ul class="small text-muted mb-0 ps-3">
+              <li><strong>Niveaux académiques uniquement</strong> : les élèves en cours libres ou parascolaires (non académiques) restent inchangés.</li>
+              <li><strong>Classes terminales (ex: 2Bac)</strong> : les élèves sans niveau supérieur configuré ne seront pas modifiés.</li>
+              <li><strong>Historique & traçabilité</strong> : une entrée sera automatiquement créée dans l'historique de chaque élève avec date et motif.</li>
+            </ul>
+          </div>
+
+          <div class="mb-3">
+            <label for="autoUpgradeReason" class="form-label fw-bold small">Motif enregistré dans l'historique</label>
+            <input type="text" name="reason" id="autoUpgradeReason" class="form-control" value="Passage de niveau académique annuel automatique">
+          </div>
+
+          <div class="mb-3">
+            <label for="autoUpgradeNotes" class="form-label small text-muted">Notes optionnelles (rentrée, promotion générale...)</label>
+            <textarea name="notes" id="autoUpgradeNotes" class="form-control" rows="2" placeholder="Ex: Rentrée scolaire, passage de classe automatique..."></textarea>
+          </div>
+        </div>
+        <div class="modal-footer bg-light">
+          <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Annuler</button>
+          <button type="submit" class="btn btn-warning text-dark fw-bold px-4">
+            <i class="bi bi-check2-circle me-1"></i> Confirmer et Lancer le Passage
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
 
 <script>
+function togglePromoteScope() {
+  const isLevel = document.getElementById('scopeLevel').checked;
+  const div = document.getElementById('sourceLevelDiv');
+  div.style.display = isLevel ? 'block' : 'none';
+  if (!isLevel) {
+    document.getElementById('studentIdsCsv').value = "{% for s in students %}{{ s.id }}{% if not forloop.last %},{% endif %}{% endfor %}";
+  }
+}
+
+function updateFilteredStudentIds() {
+  const selectedLvlId = document.getElementById('sourceLevelSelect').value;
+  const ids = [];
+  document.querySelectorAll('.student-row').forEach(row => {
+    if (!selectedLvlId || row.dataset.levelId === selectedLvlId) {
+      ids.push(row.dataset.studentId);
+    }
+  });
+  document.getElementById('studentIdsCsv').value = ids.join(',');
+}
+
 document.addEventListener('DOMContentLoaded', function () {
   // ── Row click → navigate to student profile ──────────────────
   document.querySelectorAll('.student-row').forEach(function(row) {
@@ -386,44 +538,44 @@ document.addEventListener('DOMContentLoaded', function () {
   const searchInput = document.getElementById('search');
   const noResultsRow = document.getElementById('no-results-row');
 
-  function liveFilter(q) {
-    q = q.toLowerCase().trim();
-    var rows = document.querySelectorAll('.student-row');
-    var visible = 0;
-    rows.forEach(function(row) {
-      var name     = row.dataset.name     || '';
-      var contact  = row.dataset.contact  || '';
-      var contact2 = row.dataset.contact2 || '';
-      var parent   = row.dataset.parent   || '';
-      var matches = !q || name.includes(q) || contact.includes(q) || contact2.includes(q) || parent.includes(q);
-      row.style.display = matches ? '' : 'none';
-      if (matches) visible++;
-    });
-    if (noResultsRow) {
-      noResultsRow.style.display = (visible === 0 && q) ? '' : 'none';
-      var qEl = document.getElementById('no-results-query');
-      if (qEl) qEl.textContent = q;
-    }
-    // Update clear button visibility
-    document.getElementById('searchClear').style.display = q ? 'block' : 'none';
-  }
+  // function liveFilter(q) {
+  //   q = q.toLowerCase().trim();
+  //   var rows = document.querySelectorAll('.student-row');
+  //   var visible = 0;
+  //   rows.forEach(function(row) {
+  //     var name     = row.dataset.name     || '';
+  //     var contact  = row.dataset.contact  || '';
+  //     var contact2 = row.dataset.contact2 || '';
+  //     var parent   = row.dataset.parent   || '';
+  //     var matches = !q || name.includes(q) || contact.includes(q) || contact2.includes(q) || parent.includes(q);
+  //     row.style.display = matches ? '' : 'none';
+  //     if (matches) visible++;
+  //   });
+  //   if (noResultsRow) {
+  //     noResultsRow.style.display = (visible === 0 && q) ? '' : 'none';
+  //     var qEl = document.getElementById('no-results-query');
+  //     if (qEl) qEl.textContent = q;
+  //   }
+  //   // Update clear button visibility
+  //   document.getElementById('searchClear').style.display = q ? 'block' : 'none';
+  // }
 
-  var liveTimeout;
-  searchInput.addEventListener('input', function() {
-    clearTimeout(liveTimeout);
-    var q = this.value;
-    liveTimeout = setTimeout(function() { liveFilter(q); }, 120);
-  });
+  // var liveTimeout;
+  // searchInput.addEventListener('input', function() {
+  //   clearTimeout(liveTimeout);
+  //   var q = this.value;
+  //   liveTimeout = setTimeout(function() { liveFilter(q); }, 120);
+  // });
 
   // Initial run (if page loaded with a value)
-  if (searchInput.value) liveFilter(searchInput.value);
+  // if (searchInput.value) liveFilter(searchInput.value);
 
   // ── Clear button ────────────────────────────────────────────
-  document.getElementById('searchClear').addEventListener('click', function() {
-    searchInput.value = '';
-    liveFilter('');
-    searchInput.focus();
-  });
+  // document.getElementById('searchClear').addEventListener('click', function() {
+  //   searchInput.value = '';
+  //   liveFilter('');
+  //   searchInput.focus();
+  // });
 
   // ── Auto-submit on select change ────────────────────────────
   ['per_page', 'payment_status', 'course_group', 'level'].forEach(function(id) {

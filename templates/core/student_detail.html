@@ -77,6 +77,9 @@
         </div>
       </div>
       <div class="col-12 col-sm-auto d-flex flex-wrap gap-2">
+        <button type="button" class="btn btn-outline-info" data-bs-toggle="modal" data-bs-target="#promoteStudentModal" style="min-height: 44px; display: inline-flex; align-items: center;">
+          <i class="bi bi-arrow-up-circle me-1" aria-hidden="true"></i> Promouvoir
+        </button>
         <a href="{% url 'core:student_edit' student.id %}" class="btn btn-outline-primary" style="min-height: 44px; display: inline-flex; align-items: center;">
           <i class="bi bi-pencil" aria-hidden="true"></i> Éditer
         </a>
@@ -161,6 +164,7 @@
   <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#attendance" role="tab" style="min-height: 44px;"><i class="bi bi-calendar-check" aria-hidden="true"></i> Assiduité</button></li>
   <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#payments" role="tab" style="min-height: 44px;"><i class="bi bi-receipt" aria-hidden="true"></i> Paiements</button></li>
   <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#info" role="tab" style="min-height: 44px;"><i class="bi bi-info-circle" aria-hidden="true"></i> Infos</button></li>
+  <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#level_history" role="tab" style="min-height: 44px;"><i class="bi bi-layers-fill" aria-hidden="true"></i> Progression Niveau ({{ level_history.count }})</button></li>
 </ul>
 
 <div class="tab-content">
@@ -535,6 +539,93 @@
     </div>
   </div>
 
+  <!-- Level Progression & History Tab -->
+  <div class="tab-pane fade" id="level_history">
+    <div class="card mb-4">
+      <div class="card-header d-flex align-items-center justify-content-between flex-wrap gap-2">
+        <span class="fw-600"><i class="bi bi-layers-fill text-primary me-2"></i>Niveau & Progression académique</span>
+        <button type="button" class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#promoteStudentModal">
+          <i class="bi bi-arrow-up-circle me-1"></i> Promouvoir de niveau
+        </button>
+      </div>
+      <div class="card-body">
+        <div class="row g-3 mb-4">
+          <div class="col-md-6">
+            <div class="p-3 rounded-3 border" style="background:var(--surface-alt, #f8fafc);">
+              <div class="small text-muted mb-1">Niveau actuel de l'élève</div>
+              <div class="fs-5 fw-bold text-dark d-flex align-items-center gap-2">
+                {% if student.level %}
+                  <span class="badge bg-primary fs-6">{{ student.level.name }}</span>
+                  <small class="text-muted">({{ student.level.category.name|default:"Général" }})</small>
+                {% else %}
+                  <span class="badge bg-secondary fs-6">Sans niveau</span>
+                {% endif %}
+              </div>
+            </div>
+          </div>
+          <div class="col-md-6">
+            <div class="p-3 rounded-3 border" style="background:var(--surface-alt, #f8fafc);">
+              <div class="small text-muted mb-1">Niveau suivant pré-configuré</div>
+              <div class="fs-5 fw-bold text-dark d-flex align-items-center gap-2">
+                {% if next_level %}
+                  <span class="badge bg-success fs-6">{{ next_level.name }}</span>
+                  <small class="text-success"><i class="bi bi-check-circle me-1"></i>Progression automatique prête</small>
+                {% else %}
+                  <span class="text-muted fs-6"><i class="bi bi-info-circle me-1"></i>Dernier niveau du cursus ou non configuré</span>
+                {% endif %}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <h6 class="fw-bold text-dark mb-3"><i class="bi bi-clock-history me-2"></i>Historique des transitions de niveau</h6>
+        {% if level_history %}
+          <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0">
+              <thead class="table-light">
+                <tr>
+                  <th>Date</th>
+                  <th>Ancien niveau</th>
+                  <th>Nouveau niveau</th>
+                  <th>Motif</th>
+                  <th>Effectué par</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for h in level_history %}
+                  <tr>
+                    <td>{{ h.changed_at|date:"d/m/Y H:i" }}</td>
+                    <td>
+                      {% if h.from_level %}
+                        <span class="badge bg-secondary">{{ h.from_level.name }}</span>
+                      {% else %}
+                        <span class="text-muted">Sans niveau</span>
+                      {% endif %}
+                    </td>
+                    <td>
+                      {% if h.to_level %}
+                        <span class="badge bg-success"><i class="bi bi-arrow-right me-1"></i>{{ h.to_level.name }}</span>
+                      {% else %}
+                        <span class="text-muted">—</span>
+                      {% endif %}
+                    </td>
+                    <td>{{ h.reason|default:"Progression de niveau" }}</td>
+                    <td>{{ h.changed_by.username|default:"Système" }}</td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        {% else %}
+          <div class="text-center py-4 text-muted">
+            <i class="bi bi-layers fs-1 d-block mb-2 opacity-50"></i>
+            Aucun historique de progression enregistré pour le moment.
+          </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
 </div><!-- tab-content -->
 
 <!-- Breadcrumb actions -->
@@ -545,6 +636,58 @@
   <a href="{% url 'core:student_delete_confirm' student.id %}" class="btn btn-outline-danger ms-auto" style="min-height: 44px; display: inline-flex; align-items: center;">
     <i class="bi bi-trash" aria-hidden="true"></i> Supprimer cet élève
   </a>
+</div>
+
+<!-- Promote Student Modal -->
+<div class="modal fade" id="promoteStudentModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title"><i class="bi bi-arrow-up-circle text-primary me-2"></i>Promouvoir {{ student.name }}</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <form method="post" action="{% url 'core:student_promote_level' student.id %}">
+        {% csrf_token %}
+        <div class="modal-body">
+          <p class="text-muted mb-3">
+            Niveau actuel : <strong>{{ student.level.name|default:"Sans niveau" }}</strong>
+          </p>
+          <div class="mb-3">
+            <label for="targetLevelSelect" class="form-label fw-bold">Niveau cible</label>
+            <select name="target_level_id" id="targetLevelSelect" class="form-select" required>
+              {% if next_level %}
+                <option value="{{ next_level.id }}" selected>★ Recommandé : {{ next_level.name }}</option>
+              {% else %}
+                <option value="">-- Sélectionner un niveau --</option>
+              {% endif %}
+              {% for lvl in all_levels %}
+                {% if lvl != student.level and lvl != next_level %}
+                  <option value="{{ lvl.id }}">{{ lvl.name }} ({{ lvl.category.name|default:"Général" }})</option>
+                {% endif %}
+              {% endfor %}
+            </select>
+          </div>
+          <div class="mb-3">
+            <label for="promoteReason" class="form-label fw-bold">Motif de la promotion</label>
+            <input type="text" name="reason" id="promoteReason" class="form-control" value="Progression annuelle / Réussite du niveau">
+          </div>
+          <div class="mb-3">
+            <label for="promoteNotes" class="form-label">Notes optionnelles</label>
+            <textarea name="notes" id="promoteNotes" class="form-control" rows="2" placeholder="Appréciation ou remarque sur la progression..."></textarea>
+          </div>
+          <div class="alert alert-info py-2 small mb-0">
+            <i class="bi bi-info-circle me-1"></i> L'ancien niveau et la date seront conservés dans l'historique sans détruire les données passées.
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Annuler</button>
+          <button type="submit" class="btn btn-primary fw-bold">
+            <i class="bi bi-check-circle me-1"></i> Confirmer la promotion
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
 </div>
 
 <!-- Add Enrollment Modal -->

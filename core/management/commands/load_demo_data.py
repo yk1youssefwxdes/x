@@ -45,6 +45,11 @@ class Command(BaseCommand):
             default=int(os.environ.get("DEMO_NUM_COURSES", 16)),
             help="Number of course groups to generate (default: 16)",
         )
+        parser.add_argument(
+            "--upgrade-academic",
+            action="store_true",
+            help="Fait progresser automatiquement les élèves académiques d'une année après génération",
+        )
 
     def handle(self, *args, **options):
         force = options["force"] or os.environ.get("FORCE_DEMO_DATA", "").lower() in ("true", "1", "yes")
@@ -72,5 +77,12 @@ class Command(BaseCommand):
             call_command("initadmin")
         except Exception:
             pass
+
+        if options.get("upgrade_academic"):
+            self.stdout.write(self.style.NOTICE("[*] Simulation du passage annuel des niveaux académiques..."))
+            try:
+                call_command("upgrade_academic_levels")
+            except Exception as e:
+                self.stdout.write(self.style.ERROR(f"Erreur lors du passage des niveaux: {e}"))
 
         self.stdout.write(self.style.SUCCESS("[✔] Demo data loaded successfully!"))

@@ -10,7 +10,10 @@ urlpatterns = [
     path('students/', views.students_list, name='students_list'),
     path('students/print/', views.print_students_list, name='print_students_list'),
     path('students/create/', views.student_create, name='student_create'),
+    path('students/bulk-promote/', views.students_bulk_promote, name='students_bulk_promote'),
+    path('students/academic-auto-upgrade/', views.academic_auto_upgrade, name='academic_auto_upgrade'),
     path('students/<int:student_id>/', views.student_page, name='student_page'),
+    path('students/<int:student_id>/promote/', views.student_promote_level, name='student_promote_level'),
     path('students/<int:student_id>/edit/', views.student_edit, name='student_edit'),
     path('students/<int:student_id>/delete/', views.student_delete, name='student_delete'),
     path('students/<int:student_id>/delete-confirm/', views.student_delete_confirm, name='student_delete_confirm'),
@@ -71,8 +74,9 @@ urlpatterns = [
     path('schedule/makeup/create/', views.create_makeup_session, name='create_makeup_session'),
     path('attendance/report/', views.attendance_report, name='attendance_report'),
     path('schedule/print/admin/', views.print_admin_schedule, name='print_admin_schedule'),
-     path('schedule/print/teacher/<int:teacher_id>/', views.print_teacher_schedule, name='print_teacher_schedule'),
-     path('schedule/print/student/<int:student_id>/', views.print_student_schedule, name='print_student_schedule'),
+    path('schedule/print/custom/', views.print_custom_schedule, name='print_custom_schedule'),
+    path('schedule/print/teacher/<int:teacher_id>/', views.print_teacher_schedule, name='print_teacher_schedule'),
+    path('schedule/print/student/<int:student_id>/', views.print_student_schedule, name='print_student_schedule'),
     path('schedule/conflicts/', views.schedule_conflicts, name='schedule_conflicts'),
     path('schedule/check-conflict/', views.check_conflict_ajax, name='check_conflict_ajax'),
     path('sessions/today/', views.sessions_today, name='sessions_today'),
@@ -108,6 +112,8 @@ urlpatterns = [
     # Payroll
     path('payroll/teacher/', views.teacher_payroll, name='teacher_payroll'),
     path('payroll/teacher/pdf/', views.export_teacher_payslip_pdf, name='export_teacher_payslip_pdf'),
+    path('payroll/calculator/', views.payroll_calculator, name='payroll_calculator'),
+    path('payroll/calculator/data-ajax/', views.payroll_calculator_data_ajax, name='payroll_calculator_data_ajax'),
 
     # WhatsApp Integration
     path('whatsapp/', views.whatsapp_dashboard, name='whatsapp_dashboard'),

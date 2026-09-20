@@ -161,8 +161,14 @@ class CourseGroupFilter(django_filters.FilterSet):
         queryset=Level.objects.all(),
         label='Niveau',
         widget=forms.Select(attrs={'class': 'form-select'}),
-        empty_label='-- Tous les niveaux --'
+        empty_label='-- Tous les niveaux --',
+        method='filter_by_level'
     )
+
+    def filter_by_level(self, queryset, name, value):
+        if not value:
+            return queryset
+        return queryset.filter(Q(levels=value) | Q(level=value)).distinct()
     is_active = django_filters.BooleanFilter(
         field_name='is_active', 
         label='Actif', 

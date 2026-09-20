@@ -19,17 +19,20 @@
         Sélectionnez un professeur et un mois pour calculer sa rémunération.
       </p>
     </div>
-    {% if result %}
-      <div class="d-flex align-items-center gap-2">
+    <div class="d-flex align-items-center gap-2">
+      <a href="{% url 'core:payroll_calculator' %}" class="btn btn-outline-primary btn-sm">
+        <i class="bi bi-calculator me-1"></i> Simulateur / Calculateur en direct
+      </a>
+      {% if result %}
         <a href="{% url 'core:export_teacher_payslip_pdf' %}?teacher_id={{ result.teacher.id }}&start_date={{ result.start_date_str }}&end_date={{ result.end_date_str }}"
-           class="btn btn-outline-primary btn-sm" target="_blank">
+           class="btn btn-outline-secondary btn-sm" target="_blank">
           <i class="bi bi-file-earmark-pdf-fill me-1"></i> Bulletin de paie (PDF)
         </a>
         <button type="button" class="btn btn-success btn-sm" data-bs-toggle="modal" data-bs-target="#addPaymentModal">
           <i class="bi bi-plus-circle-fill me-1"></i> Enregistrer un versement
         </button>
-      </div>
-    {% endif %}
+      {% endif %}
+    </div>
   </div>
 
   <!-- ── 1. SELECTOR CARD ───────────────────────────────────────────── -->

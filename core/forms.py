@@ -9,7 +9,7 @@ class CourseGroupMultipleChoiceField(forms.ModelMultipleChoiceField):
             f"{sch.get_day_display()} {sch.start_time.strftime('%H:%M')}"
             for sch in obj.schedules.all()
         )
-        level_str = obj.level.name if obj.level else "Sans niveau"
+        level_str = obj.levels_display
         if schedules_str:
             return f"{obj.name} ({level_str}) - {schedules_str}"
         return f"{obj.name} ({level_str})"
@@ -143,13 +143,10 @@ class StudentForm(forms.ModelForm):
         else:
             checked_ids = set()
 
-        groups = self.fields['groups'].queryset.select_related('level').prefetch_related('schedules')
+        groups = self.fields['groups'].queryset.select_related('level').prefetch_related('schedules', 'levels')
 
         by_level = {}  # key: (level_id_str, level_name) -> list of group dicts
         for g in groups:
-            level_id = str(g.level_id) if g.level_id else ''
-            level_name = g.level.name if g.level else "Sans niveau"
-            key = (level_id, level_name)
             schedules = [
                 {
                     'day': sch.get_day_display(),
@@ -158,12 +155,27 @@ class StudentForm(forms.ModelForm):
                 }
                 for sch in g.schedules.all()
             ]
-            by_level.setdefault(key, []).append({
+            group_item = {
                 'id': g.id,
                 'name': g.name,
+                'levels_display': g.levels_display,
                 'schedules': schedules,
                 'checked': g.id in checked_ids,
-            })
+            }
+            group_levels = list(g.levels.all())
+            if not group_levels and g.level:
+                group_levels = [g.level]
+
+            if group_levels:
+                for lvl in group_levels:
+                    key = (str(lvl.id), lvl.name)
+                    existing_ids = {item['id'] for item in by_level.get(key, [])}
+                    if g.id not in existing_ids:
+                        by_level.setdefault(key, []).append(group_item)
+            else:
+                key = ('', 'Sans niveau')
+                by_level.setdefault(key, []).append(group_item)
+
         # "Sans niveau" last, others sorted by name
         ordered = dict(sorted(by_level.items(), key=lambda kv: (kv[0][0] == '', kv[0][1])))
         return ordered
@@ -211,31 +223,50 @@ class EnrollmentForm(forms.ModelForm):
 
 class CourseGroupForm(forms.ModelForm):
     """Form for creating and editing course groups (classes)"""
+    levels = forms.ModelMultipleChoiceField(
+        queryset=Level.objects.all().select_related('category'),
+        required=False,
+        widget=forms.SelectMultiple(attrs={'class': 'form-select select2', 'multiple': 'multiple'}),
+        label="Niveaux académiques"
+    )
     
     class Meta:
         model = CourseGroup
-        fields = ['name', 'subject', 'level', 'monthly_price', 'teacher', 'whatsapp_group_link', 'is_active']
+        fields = ['name', 'subject', 'levels', 'monthly_price', 'teacher', 'whatsapp_group_link', 'is_active']
         widgets = {
             'name': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Nom du groupe'}),
             'subject': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Matière'}),
-            'level': forms.Select(attrs={'class': 'form-select'}),
             'monthly_price': forms.NumberInput(attrs={'class': 'form-control', 'placeholder': 'Prix mensuel (DH)'}),
             'teacher': forms.Select(attrs={'class': 'form-select'}),
             'whatsapp_group_link': forms.URLInput(attrs={'class': 'form-control', 'placeholder': 'Ex: https://chat.whatsapp.com/...'}),
             'is_active': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
         }
 
-    # def __init__(self, *args, **kwargs):
-    #     super().__init__(*args, **kwargs)
-    #     self.fields['level'].required = False
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if self.instance and self.instance.pk:
+            self.fields['levels'].initial = self.instance.levels.all()
+
+    def save(self, commit=True):
+        group = super().save(commit=commit)
+        if commit:
+            self.save_m2m()
+            first_lvl = group.levels.first()
+            if first_lvl and group.level != first_lvl:
+                group.level = first_lvl
+                CourseGroup.objects.filter(pk=group.pk).update(level=first_lvl)
+        return group
+
 
 class LevelForm(forms.ModelForm):
     class Meta:
         model = Level
-        fields = ['name', 'category']
+        fields = ['name', 'category', 'order', 'next_level']
         widgets = {
             'name': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Nom du niveau'}),
             'category': forms.Select(attrs={'class': 'form-select'}),
+            'order': forms.NumberInput(attrs={'class': 'form-control', 'placeholder': 'Ordre (ex: 1, 2, 3...)'}),
+            'next_level': forms.Select(attrs={'class': 'form-select'}),
         }
 
 

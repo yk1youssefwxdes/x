@@ -54,7 +54,15 @@
                     {{ course.name }}
                   </a>
                 </h5>
-                {% if course.level %}
+                {% if course.levels.all %}
+                  <div class="d-flex flex-wrap gap-1 mt-1">
+                    {% for lvl in course.levels.all %}
+                      <a href="{% url 'core:level_detail' lvl.id %}" class="text-decoration-none">
+                        <span class="badge badge-secondary"><i class="bi bi-layers"></i> {{ lvl.name }}</span>
+                      </a>
+                    {% endfor %}
+                  </div>
+                {% elif course.level %}
                   <a href="{% url 'core:level_detail' course.level.id %}" class="text-decoration-none">
                     <span class="badge badge-secondary"><i class="bi bi-layers"></i> {{ course.level.name }}</span>
                   </a>

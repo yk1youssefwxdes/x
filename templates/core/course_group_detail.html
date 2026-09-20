@@ -55,7 +55,13 @@
           <span class="text-muted" style="font-size:13.5px;">
             <i class="bi bi-journal-text me-1"></i><strong>{{ group.subject }}</strong>
           </span>
-          {% if group.level %}
+          {% if group.levels.all %}
+            {% for lvl in group.levels.all %}
+              <a href="{% url 'core:level_detail' lvl.id %}" class="text-decoration-none">
+                <span class="badge badge-secondary"><i class="bi bi-layers-fill me-1"></i>{{ lvl.name }}</span>
+              </a>
+            {% endfor %}
+          {% elif group.level %}
             <a href="{% url 'core:level_detail' group.level.id %}" class="text-decoration-none">
               <span class="badge badge-secondary"><i class="bi bi-layers-fill me-1"></i>{{ group.level.name }}</span>
             </a>
@@ -449,11 +455,17 @@
   <a href="{% url 'core:courses_list' %}" class="btn btn-outline-secondary">
     <i class="bi bi-arrow-left"></i> Retour à la liste
   </a>
-  {% if group.level %}
-    <a href="{% url 'core:level_detail' group.level.id %}" class="btn btn-outline-secondary">
-      <i class="bi bi-layers-fill"></i> Voir le niveau « {{ group.level.name }} »
+  {% for lvl in group.levels.all %}
+    <a href="{% url 'core:level_detail' lvl.id %}" class="btn btn-outline-secondary">
+      <i class="bi bi-layers-fill"></i> Voir le niveau « {{ lvl.name }} »
     </a>
-  {% endif %}
+  {% empty %}
+    {% if group.level %}
+      <a href="{% url 'core:level_detail' group.level.id %}" class="btn btn-outline-secondary">
+        <i class="bi bi-layers-fill"></i> Voir le niveau « {{ group.level.name }} »
+      </a>
+    {% endif %}
+  {% endfor %}
   <a href="{% url 'core:course_group_edit' group.id %}" class="btn btn-outline-primary ms-auto">
     <i class="bi bi-pencil"></i> Modifier ce groupe
   </a>

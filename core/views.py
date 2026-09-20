@@ -376,6 +376,9 @@ def students_list(request):
         request.GET.get('is_active') and request.GET.get('is_active') != '',
     ])
     
+    from .models import Level
+    all_levels = Level.objects.all().select_related('category').order_by('category__name', 'order', 'name')
+
     context = {
         'students': students,
         'filter': student_filter,
@@ -384,6 +387,7 @@ def students_list(request):
         'filters_active': filters_active,
         'total_students': students_qs.count(),
         'filtered_count': filtered_qs.count(),
+        'all_levels': all_levels,
     }
     
     return render(request, 'core/students_list.html', context)
@@ -463,6 +467,10 @@ def student_page(request, student_id):
         })
 
 
+    level_history = student.level_history.select_related('from_level', 'to_level', 'changed_by').all()
+    all_levels = Level.objects.all().select_related('category')
+    next_level = student.level.next_level if student.level else None
+
     context = {
         'student': student,
         'enrollments': enrollments,
@@ -476,9 +484,145 @@ def student_page(request, student_id):
         'payment_months': payment_months,
         'group_attendance': group_attendance,
         'recent_attendance': recent_attendance,
+        'level_history': level_history,
+        'all_levels': all_levels,
+        'next_level': next_level,
     }
 
     return render(request, 'core/student_detail.html', context)
+
+
+@require_http_methods(['GET', 'POST'])
+def student_promote_level(request, student_id):
+    """Promote student to next level with historical tracking."""
+    from .models import Level
+    from .utils import promote_student_level
+
+    student = get_object_or_404(Student, pk=student_id)
+    if request.method == 'POST':
+        target_level_id = request.POST.get('target_level_id')
+        target_level = Level.objects.filter(pk=target_level_id).first() if target_level_id else None
+        reason = request.POST.get('reason') or "Progression annuelle / Réussite du niveau"
+        notes = request.POST.get('notes', '')
+
+        success, new_level, msg = promote_student_level(student, to_level=target_level, reason=reason, user=request.user, notes=notes)
+        if success:
+            messages.success(request, msg)
+        else:
+            messages.error(request, msg)
+
+        if request.headers.get('x-requested-with') == 'XMLHttpRequest':
+            return JsonResponse({'success': success, 'message': msg, 'new_level': new_level.name if new_level else None})
+        return redirect('core:student_page', student_id=student.id)
+
+    next_level = student.level.next_level if student.level else None
+    return JsonResponse({
+        'student_id': student.id,
+        'student_name': student.name,
+        'current_level': student.level.name if student.level else None,
+        'next_level_id': next_level.id if next_level else None,
+        'next_level_name': next_level.name if next_level else None,
+    })
+
+
+@require_POST
+def students_bulk_promote(request):
+    """Bulk promote selected students to their configured next level or a chosen target level."""
+    from .models import Level
+    from .utils import promote_student_level
+
+    student_ids = request.POST.getlist('student_ids')
+    if not student_ids:
+        raw_ids = request.POST.get('student_ids_csv', '')
+        student_ids = [s.strip() for s in raw_ids.split(',') if s.strip()]
+
+    if not student_ids:
+        messages.error(request, "Aucun élève sélectionné pour la promotion.")
+        return redirect('core:students_list')
+
+    target_level_id = request.POST.get('target_level_id')
+    target_level = Level.objects.filter(pk=target_level_id).first() if target_level_id else None
+    reason = request.POST.get('reason') or "Progression groupée de niveau"
+    notes = request.POST.get('notes', '')
+
+    promoted_count = 0
+    skipped_count = 0
+
+    students = Student.objects.filter(id__in=student_ids).select_related('level')
+    for st in students:
+        success, new_lvl, msg = promote_student_level(st, to_level=target_level, reason=reason, user=request.user, notes=notes)
+        if success:
+            promoted_count += 1
+        else:
+            skipped_count += 1
+
+    if promoted_count > 0:
+        messages.success(request, f"🎉 {promoted_count} élève(s) promu(s) avec succès.")
+    if skipped_count > 0:
+        messages.warning(request, f"⚠️ {skipped_count} élève(s) non promu(s) (aucun niveau supérieur configuré ou déjà au niveau cible).")
+
+    return redirect('core:students_list')
+
+
+@require_POST
+def academic_auto_upgrade(request):
+    """
+    One-click auto upgrade: automatically promotes all active students
+    who are currently enrolled in an ACADEMIC level to their configured next_level.
+    Non-academic levels are untouched.
+    """
+    from .models import Student, Level, LevelType
+    from .utils import promote_student_level
+
+    reason = request.POST.get('reason') or "Passage de niveau académique annuel automatique"
+    notes = request.POST.get('notes', '')
+
+    academic_students = Student.objects.filter(
+        is_active=True,
+        level__isnull=False,
+        level__level_type=LevelType.ACADEMIC
+    ).select_related('level', 'level__next_level', 'level__category')
+
+    upgraded_count = 0
+    terminal_count = 0
+    skipped_count = 0
+
+    for st in academic_students:
+        target_lvl = st.level.next_level
+        if not target_lvl:
+            target_lvl = Level.objects.filter(
+                category=st.level.category,
+                order__gt=st.level.order,
+                level_type=LevelType.ACADEMIC
+            ).order_by('order').first()
+
+        if not target_lvl:
+            terminal_count += 1
+            continue
+
+        success, new_lvl, msg = promote_student_level(
+            st,
+            to_level=target_lvl,
+            reason=reason,
+            user=request.user,
+            notes=notes
+        )
+        if success:
+            upgraded_count += 1
+        else:
+            skipped_count += 1
+
+    if upgraded_count > 0:
+        messages.success(request, f"🎉 {upgraded_count} élève(s) de niveau académique ont progressé vers leur niveau supérieur avec succès !")
+    if terminal_count > 0:
+        messages.info(request, f"ℹ️ {terminal_count} élève(s) sont en classe terminale (aucun niveau supérieur configuré).")
+    if skipped_count > 0:
+        messages.warning(request, f"⚠️ {skipped_count} élève(s) n'ont pas pu être promus.")
+    if upgraded_count == 0 and terminal_count == 0:
+        messages.info(request, "Aucun élève en niveau académique à faire progresser.")
+
+    return redirect('core:students_list')
+
 
 
 def sessions_today(request):
@@ -902,7 +1046,7 @@ def teacher_payroll(request):
 def courses_list(request):
     """Display all course groups (classes) with summary info."""
     from .models import CourseGroup
-    courses = CourseGroup.objects.all().select_related('teacher').prefetch_related('schedules__room')
+    courses = CourseGroup.objects.all().select_related('teacher', 'level').prefetch_related('levels', 'schedules__room')
     
     # Annotate with enrollment count
     from django.db.models import Count
@@ -921,7 +1065,7 @@ def group_detail(request, group_id):
     from django.utils import timezone
 
     group = get_object_or_404(
-        CourseGroup.objects.select_related('teacher', 'level').prefetch_related('schedules__room'),
+        CourseGroup.objects.select_related('teacher', 'level').prefetch_related('levels', 'schedules__room'),
         pk=group_id
     )
 
@@ -1150,6 +1294,8 @@ def sessions_schedule(request):
         'search_query': search_query,
         'exceptions_only': exceptions_only,
         'courses': CourseGroup.objects.filter(is_active=True).order_by('name'),
+        'all_levels': Level.objects.all().select_related('category').order_by('category__name', 'order', 'name'),
+        'all_groups': CourseGroup.objects.filter(is_active=True).prefetch_related('levels').order_by('name'),
         'is_week_locked': any(SchedulingFacade.is_locked(d) for d in dates),
         'unhandled_changes_count': unhandled_changes_count,
         'unhandled_session_ids': list(unhandled_session_ids),
@@ -6368,6 +6514,322 @@ def admin_reset_data(request):
         'counts': counts,
         'total_records': total_records,
     })
+
+
+def payroll_calculator(request):
+    """
+    Interactive live payroll and salary calculator supporting:
+    - Percentage-based payment (Part des gains / %)
+    - Hourly rate payment (Paiement par heure)
+    - Fixed salary (Salaire fixe)
+    Allows client-side live recalculation without saving to DB.
+    Persists to TeacherPayment only on explicit confirmation POST.
+    """
+    from .models import Teacher, CourseGroup, Level, TeacherPayment
+    from dateutil.relativedelta import relativedelta
+    from .utils import month_name_fr
+
+    if request.method == 'POST' and request.POST.get('action') == 'save_payment':
+        teacher_id = request.POST.get('teacher_id')
+        teacher = get_object_or_404(Teacher, pk=teacher_id) if teacher_id else None
+        
+        if not teacher:
+            messages.error(request, "Veuillez sélectionner un enseignant valide pour enregistrer le paiement.")
+            return redirect('core:payroll_calculator')
+
+        amount = Decimal(request.POST.get('amount', '0.00'))
+        payment_date = request.POST.get('payment_date') or timezone.now().date().strftime('%Y-%m-%d')
+        payment_method = request.POST.get('payment_method', 'CASH')
+        payment_type = request.POST.get('payment_type', 'SALARY')
+        period_month = int(request.POST.get('period_month') or timezone.now().month)
+        period_year = int(request.POST.get('period_year') or timezone.now().year)
+        notes = request.POST.get('notes', '')
+
+        payment = TeacherPayment.objects.create(
+            teacher=teacher,
+            amount=amount,
+            payment_date=payment_date,
+            payment_method=payment_method,
+            payment_type=payment_type,
+            period_month=period_month,
+            period_year=period_year,
+            notes=notes
+        )
+        messages.success(request, f"Paiement de {amount} DH enregistré avec succès pour {teacher.name}.")
+        return redirect('core:teacher_payroll')
+
+    today = timezone.now().date()
+    # List of months (-5 to +2)
+    months_list = []
+    for i in range(-5, 3):
+        m = today + relativedelta(months=i)
+        first_d = m.replace(day=1)
+        months_list.append({
+            'value': first_d.strftime('%Y-%m-%d'),
+            'month': first_d.month,
+            'year': first_d.year,
+            'label': f"{month_name_fr(first_d.month)} {first_d.year}"
+        })
+
+    current_month_str = today.replace(day=1).strftime('%Y-%m-%d')
+    teachers = Teacher.objects.filter(is_active=True).order_by('name')
+    course_groups = CourseGroup.objects.filter(is_active=True).prefetch_related('levels', 'students').select_related('teacher', 'level').order_by('name')
+    levels = Level.objects.all().select_related('category').order_by('category__name', 'order', 'name')
+
+    context = {
+        'teachers': teachers,
+        'course_groups': course_groups,
+        'levels': levels,
+        'months_list': months_list,
+        'current_month_str': current_month_str,
+        'today': today,
+    }
+    return render(request, 'core/payroll_calculator.html', context)
+
+
+@require_GET
+def payroll_calculator_data_ajax(request):
+    """
+    API endpoint returning accurate live statistics for groups / teacher / month:
+    - total students
+    - paid students & unpaid students
+    - paid % & unpaid %
+    - collected revenue (DH) & theoretical revenue (DH)
+    - teacher percentage & hourly rate
+    - scheduled / taught hours
+    """
+    from .models import Teacher, CourseGroup, Payment, Session
+    from decimal import Decimal
+
+    teacher_id = request.GET.get('teacher_id')
+    month_str = request.GET.get('month')
+    group_ids = request.GET.getlist('group_ids[]') or request.GET.getlist('group_ids')
+    if not group_ids and request.GET.get('group_ids'):
+        group_ids = request.GET.get('group_ids', '').split(',')
+    
+    clean_group_ids = []
+    for gid in group_ids:
+        if str(gid).strip().isdigit():
+            clean_group_ids.append(int(str(gid).strip()))
+
+    today = timezone.now().date()
+    if month_str:
+        try:
+            target_month = datetime.strptime(month_str, '%Y-%m-%d').date().replace(day=1)
+        except (ValueError, TypeError):
+            target_month = today.replace(day=1)
+    else:
+        target_month = today.replace(day=1)
+
+    next_month = (target_month + timedelta(days=32)).replace(day=1)
+    end_of_month = next_month - timedelta(days=1)
+
+    teacher = None
+    if teacher_id and str(teacher_id).isdigit():
+        teacher = Teacher.objects.filter(pk=teacher_id).first()
+
+    # If no groups explicitly chosen, use teacher's assigned groups
+    if not clean_group_ids and teacher:
+        clean_group_ids = list(CourseGroup.objects.filter(teacher=teacher, is_active=True).values_list('id', flat=True))
+
+    groups = CourseGroup.objects.filter(id__in=clean_group_ids).select_related('teacher', 'level').prefetch_related('levels', 'enrollment_set__student')
+
+    group_data = []
+    total_students = 0
+    total_paid_students = 0
+    total_unpaid_students = 0
+    total_collected_revenue = Decimal('0.00')
+    total_potential_revenue = Decimal('0.00')
+    total_hours_taught = Decimal('0.00')
+
+    for g in groups:
+        active_enrollments = list(g.enrollment_set.filter(is_active=True).select_related('student'))
+        st_count = len(active_enrollments)
+        monthly_price = g.monthly_price or Decimal('0.00')
+
+        # Students payment status in this month for this group
+        paid_st_count = 0
+        collected_rev = Decimal('0.00')
+
+        for enr in active_enrollments:
+            st = enr.student
+            pmts = Payment.objects.filter(
+                student=st,
+                month_covered=target_month,
+                status='PAID'
+            )
+            st_paid = pmts.aggregate(total=Sum('amount'))['total'] or Decimal('0.00')
+            from .utils import calculate_student_monthly_total
+            req = calculate_student_monthly_total(st)
+            if req > 0 and st_paid >= req:
+                paid_st_count += 1
+                collected_rev += monthly_price
+            elif req > 0 and st_paid > 0:
+                ratio = min(st_paid / req, Decimal('1.00'))
+                collected_rev += (monthly_price * ratio).quantize(Decimal('0.01'))
+                paid_st_count += 1
+            elif req == 0 and st_paid > 0:
+                paid_st_count += 1
+                collected_rev += monthly_price
+
+        unpaid_st_count = max(0, st_count - paid_st_count)
+        paid_pct = round((paid_st_count / st_count * 100), 1) if st_count > 0 else 0.0
+        unpaid_pct = round(100.0 - paid_pct, 1) if st_count > 0 else 0.0
+        potential_rev = monthly_price * Decimal(st_count)
+
+        # Hours taught in this group during target_month
+        sessions = Session.objects.filter(
+            group=g,
+            date__range=[target_month, end_of_month],
+            status='DONE'
+        )
+        hours = sum(Decimal(str(s.duration_hours())) for s in sessions)
+
+        teacher_pct = teacher.payment_percentage if teacher and teacher.payment_percentage else Decimal('50.00')
+        teacher_rate = teacher.hourly_rate if teacher and teacher.hourly_rate else Decimal('100.00')
+
+        group_data.append({
+            'id': g.id,
+            'name': g.name,
+            'subject': g.subject,
+            'levels': [lvl.name for lvl in g.levels_list],
+            'levels_display': g.levels_display,
+            'monthly_price': float(monthly_price),
+            'student_count': st_count,
+            'paid_count': paid_st_count,
+            'unpaid_count': unpaid_st_count,
+            'paid_pct': paid_pct,
+            'unpaid_pct': unpaid_pct,
+            'collected_revenue': float(collected_rev),
+            'potential_revenue': float(potential_rev),
+            'hours_taught': float(hours),
+            'teacher_percentage': float(teacher_pct),
+            'hourly_rate': float(teacher_rate),
+        })
+
+        total_students += st_count
+        total_paid_students += paid_st_count
+        total_unpaid_students += unpaid_st_count
+        total_collected_revenue += collected_rev
+        total_potential_revenue += potential_rev
+        total_hours_taught += hours
+
+    global_paid_pct = round((total_paid_students / total_students * 100), 1) if total_students > 0 else 0.0
+    global_unpaid_pct = round(100.0 - global_paid_pct, 1) if total_students > 0 else 0.0
+
+    return JsonResponse({
+        'teacher': {
+            'id': teacher.id if teacher else None,
+            'name': teacher.name if teacher else 'Non spécifié / Libre',
+            'payment_method': teacher.payment_method if teacher else 'PERCENTAGE',
+            'payment_percentage': float(teacher.payment_percentage) if teacher and teacher.payment_percentage else 50.0,
+            'hourly_rate': float(teacher.hourly_rate) if teacher and teacher.hourly_rate else 100.0,
+            'session_rate': float(teacher.session_rate) if teacher and teacher.session_rate else 100.0,
+        } if teacher else None,
+        'period': {
+            'month': target_month.month,
+            'year': target_month.year,
+            'month_str': target_month.strftime('%Y-%m-%d'),
+        },
+        'groups': group_data,
+        'totals': {
+            'total_students': total_students,
+            'paid_students': total_paid_students,
+            'unpaid_students': total_unpaid_students,
+            'paid_pct': global_paid_pct,
+            'unpaid_pct': global_unpaid_pct,
+            'collected_revenue': float(total_collected_revenue),
+            'potential_revenue': float(total_potential_revenue),
+            'hours_taught': float(total_hours_taught),
+        }
+    })
+
+
+@require_GET
+def print_custom_schedule(request):
+    """
+    Flexible custom printable schedule filtered by levels, groups, and week.
+    Optimized for A4 printing.
+    """
+    from .models import Level, CourseGroup
+    from datetime import timedelta
+
+    raw_level_ids = request.GET.getlist('level_ids[]') or request.GET.getlist('level_ids')
+    if not raw_level_ids and request.GET.get('level_ids'):
+        raw_level_ids = request.GET.get('level_ids', '').split(',')
+    level_ids = [int(x.strip()) for x in raw_level_ids if str(x).strip().isdigit()]
+
+    raw_group_ids = request.GET.getlist('group_ids[]') or request.GET.getlist('group_ids')
+    if not raw_group_ids and request.GET.get('group_ids'):
+        raw_group_ids = request.GET.get('group_ids', '').split(',')
+    group_ids = [int(x.strip()) for x in raw_group_ids if str(x).strip().isdigit()]
+
+    week_param = request.GET.get('week')
+
+    today = timezone.now().date()
+    if week_param:
+        try:
+            parsed = datetime.strptime(week_param, '%Y-%m-%d').date()
+            week_start = parsed - timedelta(days=parsed.weekday())
+        except (ValueError, TypeError):
+            week_start = today - timedelta(days=today.weekday())
+    else:
+        week_start = today - timedelta(days=today.weekday())
+    week_end = week_start + timedelta(days=6)
+
+    # Filter CourseGroups
+    groups_qs = CourseGroup.objects.filter(is_active=True)
+    level_filters = Q()
+    if level_ids:
+        level_filters = Q(levels__id__in=level_ids) | Q(level_id__in=level_ids)
+
+    if level_ids and group_ids:
+        groups_qs = groups_qs.filter(level_filters | Q(id__in=group_ids)).distinct()
+    elif level_ids:
+        groups_qs = groups_qs.filter(level_filters).distinct()
+    elif group_ids:
+        groups_qs = groups_qs.filter(id__in=group_ids)
+    # If neither is passed, groups_qs is all active groups
+
+    groups = list(groups_qs.select_related('teacher', 'level').prefetch_related('levels', 'schedules__room', 'students').order_by('name'))
+
+    selected_levels = Level.objects.filter(id__in=level_ids) if level_ids else []
+
+    day_order = ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN']
+    day_labels = {
+        'MON': 'Lundi', 'TUE': 'Mardi', 'WED': 'Mercredi',
+        'THU': 'Jeudi', 'FRI': 'Vendredi', 'SAT': 'Samedi', 'SUN': 'Dimanche'
+    }
+
+    schedules_by_day = {d: [] for d in day_order}
+    for g in groups:
+        for sch in g.schedules.all():
+            schedules_by_day[sch.day].append({
+                'group': g,
+                'schedule': sch,
+                'room': sch.room.name if sch.room else '—',
+                'teacher': g.teacher.name if g.teacher else 'Non assigné',
+                'levels_display': g.levels_display,
+                'students_count': g.students.count(),
+                'start_time': sch.start_time,
+                'end_time': sch.end_time,
+            })
+
+    for d in day_order:
+        schedules_by_day[d].sort(key=lambda x: x['start_time'])
+
+    context = {
+        'groups': groups,
+        'selected_levels': selected_levels,
+        'schedules_by_day': schedules_by_day,
+        'day_order': day_order,
+        'day_labels': day_labels,
+        'week_start': week_start,
+        'week_end': week_end,
+        'print_title': f"Emploi du temps — Semaine du {week_start.strftime('%d/%m/%Y')} au {week_end.strftime('%d/%m/%Y')}",
+    }
+    return render(request, 'core/print_custom_schedule.html', context)
+
 
 
 

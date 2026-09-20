@@ -76,11 +76,13 @@
             </div>
 
             <div class="col-md-6">
-              <label for="{{ form.level.id_for_label }}" class="form-label">
-                {{ form.level.label }}
+              <label for="{{ form.levels.id_for_label }}" class="form-label d-flex align-items-center justify-content-between">
+                <span><i class="bi bi-layers text-primary me-1"></i> {{ form.levels.label }}</span>
+                <small class="text-muted">Sélection multiple</small>
               </label>
-              {{ form.level }}
-              {% if form.level.errors %}<div class="invalid-feedback d-block">{% for e in form.level.errors %}{{ e }}{% endfor %}</div>{% endif %}
+              {{ form.levels }}
+              {% if form.levels.errors %}<div class="invalid-feedback d-block">{% for e in form.levels.errors %}{{ e }}{% endfor %}</div>{% endif %}
+              <div class="form-text">Ce groupe peut appartenir à plusieurs niveaux (ex: Débutant + Élémentaire).</div>
             </div>
 
             <div class="col-md-6">

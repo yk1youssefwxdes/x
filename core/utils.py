@@ -3016,5 +3016,46 @@ def send_whatsapp_group_invites(student, enrollments=None) -> list:
     return logs
 
 
+def promote_student_level(student, to_level=None, reason="Progression de niveau", user=None, notes=""):
+    """
+    Promote student to the next academic level, recording the transition in StudentLevelHistory.
+    If to_level is not provided, uses student.level.next_level (or next level by order in category).
+    Returns (success: bool, target_level: Level|None, message: str)
+    """
+    from .models import StudentLevelHistory, Level
+
+    current_level = student.level
+    if not to_level:
+        if current_level and current_level.next_level:
+            to_level = current_level.next_level
+        elif current_level:
+            next_cand = Level.objects.filter(
+                category=current_level.category,
+                order__gt=current_level.order
+            ).order_by('order').first()
+            if next_cand:
+                to_level = next_cand
+
+    if not to_level:
+        return False, None, "Aucun niveau suivant configuré pour ce niveau."
+
+    if current_level == to_level:
+        return False, None, "L'élève est déjà à ce niveau."
+
+    # Record historical transition
+    StudentLevelHistory.objects.create(
+        student=student,
+        from_level=current_level,
+        to_level=to_level,
+        changed_by=user if user and user.is_authenticated else None,
+        reason=reason,
+        notes=notes
+    )
+
+    student.level = to_level
+    student.save(update_fields=['level'])
+    return True, to_level, f"Élève promu au niveau « {to_level.name} » avec succès."
+
+
 
 

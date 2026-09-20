@@ -51,6 +51,12 @@
             {% endif %}
           </li>
           <li><a class="dropdown-item" href="#" data-bs-toggle="modal" data-bs-target="#printStudentModal">Plan élève...</a></li>
+          <li><hr class="dropdown-divider"></li>
+          <li>
+            <a class="dropdown-item fw-semibold text-primary" href="#" data-bs-toggle="modal" data-bs-target="#printCustomScheduleModal">
+              <i class="bi bi-printer-fill me-1"></i> Imprimer par niveau / groupe...
+            </a>
+          </li>
         </ul>
       </div>
       {% if request.user.is_superuser %}
@@ -539,6 +545,109 @@
       </div>
     </div>
   </div>
+
+  <!-- Print Custom Schedule Modal -->
+  <div class="modal fade" id="printCustomScheduleModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+      <div class="modal-content">
+        <div class="modal-header bg-light">
+          <h5 class="modal-title fw-bold text-dark">
+            <i class="bi bi-printer text-primary me-2"></i>Imprimer l'Emploi du Temps par Niveau / Groupe
+          </h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <form method="get" action="{% url 'core:print_custom_schedule' %}" target="_blank">
+          <div class="modal-body p-4">
+            <p class="text-muted small mb-3">
+              <i class="bi bi-info-circle me-1"></i> Personnalisez les niveaux ou groupes à inclure dans le planning imprimable A4.
+            </p>
+
+            <!-- Week -->
+            <div class="mb-3">
+              <label for="printScheduleWeek" class="form-label fw-bold small text-dark">Semaine à imprimer</label>
+              <input type="date" name="week" id="printScheduleWeek" class="form-control" value="{{ week_start|date:'Y-m-d' }}">
+            </div>
+
+            <div class="row g-3">
+              <!-- Levels selection -->
+              <div class="col-md-6">
+                <div class="card h-100 border">
+                  <div class="card-header bg-white py-2 d-flex justify-content-between align-items-center">
+                    <span class="fw-bold small text-dark"><i class="bi bi-layers-fill text-info me-1"></i> Filtrer par Niveaux</span>
+                    <div class="small">
+                      <a href="javascript:void(0)" onclick="toggleAllCheckboxes('levelChk', true)" class="text-decoration-none me-1">Tous</a>
+                      <a href="javascript:void(0)" onclick="toggleAllCheckboxes('levelChk', false)" class="text-decoration-none text-muted">Aucun</a>
+                    </div>
+                  </div>
+                  <div class="card-body p-2" style="max-height: 240px; overflow-y: auto;">
+                    {% for lvl in all_levels %}
+                      <div class="form-check py-1">
+                        <input class="form-check-input levelChk" type="checkbox" name="level_ids" value="{{ lvl.id }}" id="printLvl{{ lvl.id }}">
+                        <label class="form-check-label small" for="printLvl{{ lvl.id }}">
+                          <strong>{{ lvl.name }}</strong>
+                          <span class="text-muted">({{ lvl.category.name|default:"Général" }})</span>
+                        </label>
+                      </div>
+                    {% empty %}
+                      <span class="text-muted small">Aucun niveau configuré.</span>
+                    {% endfor %}
+                  </div>
+                </div>
+              </div>
+
+              <!-- Groups selection -->
+              <div class="col-md-6">
+                <div class="card h-100 border">
+                  <div class="card-header bg-white py-2 d-flex justify-content-between align-items-center">
+                    <span class="fw-bold small text-dark"><i class="bi bi-book-half text-primary me-1"></i> Filtrer par Groupes</span>
+                    <div class="small">
+                      <a href="javascript:void(0)" onclick="toggleAllCheckboxes('groupChk', true)" class="text-decoration-none me-1">Tous</a>
+                      <a href="javascript:void(0)" onclick="toggleAllCheckboxes('groupChk', false)" class="text-decoration-none text-muted">Aucun</a>
+                    </div>
+                  </div>
+                  <div class="card-body p-2" style="max-height: 240px; overflow-y: auto;">
+                    <input type="text" class="form-control form-control-sm mb-2" placeholder="Rechercher un groupe..." onkeyup="filterCheckboxes(this.value, 'groupChkItem')">
+                    <div id="printGroupsList">
+                      {% for grp in all_groups %}
+                        <div class="form-check py-1 groupChkItem" data-name="{{ grp.name|lower }}">
+                          <input class="form-check-input groupChk" type="checkbox" name="group_ids" value="{{ grp.id }}" id="printGrp{{ grp.id }}">
+                          <label class="form-check-label small d-flex justify-content-between w-100" for="printGrp{{ grp.id }}">
+                            <span><strong>{{ grp.name }}</strong> ({{ grp.subject }})</span>
+                            <span class="badge bg-light text-dark">{{ grp.levels_display|truncatechars:15 }}</span>
+                          </label>
+                        </div>
+                      {% empty %}
+                        <span class="text-muted small">Aucun groupe configuré.</span>
+                      {% endfor %}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="modal-footer bg-light">
+            <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Annuler</button>
+            <button type="submit" class="btn btn-primary fw-bold px-4">
+              <i class="bi bi-printer me-1"></i> Générer la vue A4 imprimable
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    function toggleAllCheckboxes(className, state) {
+      document.querySelectorAll('.' + className).forEach(function(c) { c.checked = state; });
+    }
+    function filterCheckboxes(query, itemClass) {
+      query = query.toLowerCase().trim();
+      document.querySelectorAll('.' + itemClass).forEach(function(item) {
+        var name = item.dataset.name || '';
+        item.style.display = (!query || name.includes(query)) ? '' : 'none';
+      });
+    }
+  </script>
 
   <!-- Print Teacher Modal -->
   <div class="modal fade" id="printTeacherModal" tabindex="-1">
