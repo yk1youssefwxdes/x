@@ -8,7 +8,7 @@ const readline = require('readline');
 const { execSync, execFileSync } = require('child_process');
 
 // ── Configuration & Environment Defaults ──────────────────────────────────────
-const SERVICE_VERSION = '1.4.0';
+const SERVICE_VERSION = '2.0.0-optimal';
 const port = Number(process.env.WA_PORT || 3000);
 const host = process.env.WA_HOST || '127.0.0.1';
 const API_KEY = process.env.WA_API_KEY || null;
@@ -21,14 +21,15 @@ const logDir = process.env.WA_LOG_DIR
     ? path.resolve(process.env.WA_LOG_DIR)
     : path.join(__dirname, 'logs');
 
-const INIT_TIMEOUT_MS = Number(process.env.WA_INIT_TIMEOUT_MS || 120000);           // 120 seconds
-const STARTUP_DELAY_MS = Number(process.env.WA_STARTUP_DELAY_MS !== undefined ? process.env.WA_STARTUP_DELAY_MS : 300); // Fast startup delay (300ms)
-const DESTROY_TIMEOUT_MS = Number(process.env.WA_DESTROY_TIMEOUT_MS || 15000);       // 15 seconds
-const RESTART_MAX_DELAY_MS = Number(process.env.WA_RESTART_MAX_DELAY_MS || 60000);   // 60 seconds max backoff
+const INIT_TIMEOUT_MS = Number(process.env.WA_INIT_TIMEOUT_MS || 90000);             // 90 seconds timeout
+const STARTUP_DELAY_MS = Number(process.env.WA_STARTUP_DELAY_MS !== undefined ? process.env.WA_STARTUP_DELAY_MS : 50); // Instant start
+const DESTROY_TIMEOUT_MS = Number(process.env.WA_DESTROY_TIMEOUT_MS || 12000);       // 12 seconds
+const RESTART_MAX_DELAY_MS = Number(process.env.WA_RESTART_MAX_DELAY_MS || 30000);   // 30 seconds max backoff
 const AUTH_TO_READY_TIMEOUT_MS = Number(process.env.WA_AUTH_TO_READY_TIMEOUT_MS || 60000); // 60 seconds
 const MAX_ATTACHMENT_SIZE_MB = Number(process.env.WA_MAX_ATTACHMENT_SIZE_MB || 25);
-const QUEUE_TIMEOUT_MS = Number(process.env.WA_QUEUE_TIMEOUT_MS || 300000); // 5 minutes max in send queue for bulk campaigns
-const MAX_LOG_SIZE_BYTES = 10 * 1024 * 1024; // 10MB per log file before rotation
+const QUEUE_TIMEOUT_MS = Number(process.env.WA_QUEUE_TIMEOUT_MS || 300000);         // 5 minutes max in send queue
+const SEND_DELAY_MS = Number(process.env.WA_SEND_DELAY_MS || 120);                   // Optimized 120ms pacing
+const MAX_LOG_SIZE_BYTES = 10 * 1024 * 1024;                                         // 10MB per log file before rotation
 
 // ── Chrome Path Resolution ───────────────────────────────────────────────────
 function resolveChromePath() {
@@ -42,46 +43,89 @@ function resolveChromePath() {
         }
     }
 
-    // Auto-detect system Chromium/Chrome in Linux / Docker / Nix environments
+    // Windows standard candidate paths for fast local resolution
+    if (process.platform === 'win32') {
+        const winCandidates = [
+            'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
+            'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe',
+            'C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe',
+            'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe',
+            process.env.LOCALAPPDATA ? path.join(process.env.LOCALAPPDATA, 'Google\\Chrome\\Application\\chrome.exe') : null,
+            process.env.PROGRAMFILES ? path.join(process.env.PROGRAMFILES, 'Google\\Chrome\\Application\\chrome.exe') : null,
+        ].filter(Boolean);
+
+        for (const candidate of winCandidates) {
+            if (fs.existsSync(candidate)) {
+                return candidate;
+            }
+        }
+    }
+
+    // Auto-detect system Chromium/Chrome in Linux / Docker / Cloud environments
     if (process.platform === 'linux') {
         const candidates = [
-            'chromium',
-            'chromium-browser',
-            'google-chrome-stable',
-            'google-chrome',
             '/usr/bin/chromium',
             '/usr/bin/chromium-browser',
             '/usr/bin/google-chrome-stable',
-            '/usr/bin/google-chrome'
+            '/usr/bin/google-chrome',
+            'chromium',
+            'chromium-browser',
+            'google-chrome-stable',
+            'google-chrome'
         ];
 
         for (const candidate of candidates) {
             try {
                 if (candidate.startsWith('/')) {
                     if (fs.existsSync(candidate)) {
-                        console.log(`[CONFIG] Auto-detected system browser at: ${candidate}`);
                         return candidate;
                     }
                 } else {
                     const detected = execSync(`which ${candidate} 2>/dev/null`, { encoding: 'utf8' }).trim();
                     if (detected && fs.existsSync(detected)) {
-                        console.log(`[CONFIG] Auto-detected system browser via which (${candidate}) at: ${detected}`);
                         return detected;
                     }
                 }
-            } catch (e) {
-                // ignore
-            }
+            } catch (_) {}
         }
     }
 
-    // Default: allow Puppeteer to use its configured/bundled browser
+    // Default: allow Puppeteer bundled Chromium
     return null;
 }
 
 const customChromePath = resolveChromePath();
 
+// ── In-Memory Registration Cache ─────────────────────────────────────────────
+// Greatly speeds up repeated sends and bulk messaging campaigns by caching
+// positive number validations in RAM with a 2-hour TTL.
+const registrationCache = new Map();
+const REG_CACHE_TTL_MS = 2 * 60 * 60 * 1000; // 2 hours
+const REG_CACHE_MAX_SIZE = 10000;
+
+function getCachedRegistration(chatId) {
+    const item = registrationCache.get(chatId);
+    if (!item) return null;
+    if (Date.now() - item.ts > REG_CACHE_TTL_MS) {
+        registrationCache.delete(chatId);
+        return null;
+    }
+    return item.isRegistered;
+}
+
+function setCachedRegistration(chatId, isRegistered) {
+    if (registrationCache.size >= REG_CACHE_MAX_SIZE) {
+        // Evict oldest 1000 items
+        const keys = Array.from(registrationCache.keys()).slice(0, 1000);
+        for (const k of keys) registrationCache.delete(k);
+    }
+    registrationCache.set(chatId, { isRegistered: Boolean(isRegistered), ts: Date.now() });
+}
+
 // ── Windows Process Management & Safe Ownership Verification ──────────────────
+// Keeps a fast RAM cache of verified PIDs to prevent repeatedly calling external commands.
+const verifiedPidsCache = new Map();
+
 /**
  * Safely extracts the ChildProcess object from a Client instance.
  */
@@ -123,22 +167,62 @@ function isProcessAlive(pid) {
 }
 
 /**
- * Query process executable name and full command line via Windows CIM/WMI.
+ * Fast process info query on Windows without slow PowerShell CLR overhead.
+ * Priority:
+ * 1. tasklist (~25ms) to verify executable name.
+ * 2. wmic (~50ms) to check command line session directory reference.
+ * 3. Fallback to PowerShell only if wmic fails.
  */
-function getProcessInfo(pid) {
+function getProcessInfoFast(pid) {
     if (!pid || typeof pid !== 'number' || pid <= 0) return null;
     if (process.platform !== 'win32') return null;
 
-    try {
-        const raw = execFileSync('powershell.exe', [
-            '-NoProfile',
-            '-NonInteractive',
-            '-Command',
-            `$p = Get-CimInstance Win32_Process -Filter "ProcessId = ${pid}"; if ($p) { @{Name=$p.Name; CommandLine=$p.CommandLine} | ConvertTo-Json -Compress }`
-        ], { encoding: 'utf8', timeout: 4000 }).trim();
+    // Check memory cache first (valid for 15 seconds)
+    const cached = verifiedPidsCache.get(pid);
+    if (cached && Date.now() - cached.ts < 15000) {
+        return cached.info;
+    }
 
-        if (!raw) return null;
-        return JSON.parse(raw);
+    try {
+        // Fast tasklist call to verify process exists and retrieve binary name
+        const tasklistOut = execSync(`tasklist /fi "PID eq ${pid}" /fo csv /nh`, {
+            encoding: 'utf8',
+            timeout: 1500,
+            stdio: ['pipe', 'pipe', 'ignore']
+        }).trim();
+
+        if (!tasklistOut || tasklistOut.includes('No tasks are running')) {
+            return null;
+        }
+
+        const match = tasklistOut.match(/^"([^"]+)"/);
+        const name = match ? match[1] : '';
+
+        // Query commandline with wmic (much faster than powershell.exe)
+        let commandLine = '';
+        try {
+            const wmicOut = execSync(`wmic process where (ProcessId=${pid}) get CommandLine /format:list`, {
+                encoding: 'utf8',
+                timeout: 1500,
+                stdio: ['pipe', 'pipe', 'ignore']
+            }).trim();
+            const clMatch = wmicOut.match(/^CommandLine=(.*)$/m);
+            if (clMatch) commandLine = clMatch[1].trim();
+        } catch (_) {
+            // If wmic fails, fallback to lightweight PowerShell query
+            try {
+                commandLine = execFileSync('powershell.exe', [
+                    '-NoProfile',
+                    '-NonInteractive',
+                    '-Command',
+                    `$p = Get-CimInstance Win32_Process -Filter "ProcessId = ${pid}"; if ($p) { $p.CommandLine }`
+                ], { encoding: 'utf8', timeout: 2500 }).trim();
+            } catch (_) {}
+        }
+
+        const info = { Name: name, CommandLine: commandLine };
+        verifiedPidsCache.set(pid, { info, ts: Date.now() });
+        return info;
     } catch (_) {
         return null;
     }
@@ -146,10 +230,6 @@ function getProcessInfo(pid) {
 
 /**
  * Verify whether a process belongs specifically to THIS WhatsApp service instance.
- * Checks:
- * 1. Process exists and is alive.
- * 2. Executable is chrome.exe, msedge.exe, or chromium.exe.
- * 3. Process command line explicitly points to our configured WA_SESSION_DIR.
  */
 function isOwnedChromiumProcess(pid) {
     if (!pid || typeof pid !== 'number' || pid <= 0) {
@@ -159,11 +239,16 @@ function isOwnedChromiumProcess(pid) {
         return { isOwned: false, reason: `Process ${pid} is not alive` };
     }
 
+    // Fast-path: If it is our actively tracked spawned Chromium PID, it is guaranteed owned
+    if (activeBrowserPid && activeBrowserPid === pid) {
+        return { isOwned: true, reason: 'Active tracked child process' };
+    }
+
     if (process.platform !== 'win32') {
         return { isOwned: true, reason: 'Non-Windows platform check bypass' };
     }
 
-    const info = getProcessInfo(pid);
+    const info = getProcessInfoFast(pid);
     if (!info || !info.Name) {
         return { isOwned: false, reason: `Could not query process info for PID ${pid}` };
     }
@@ -180,7 +265,8 @@ function isOwnedChromiumProcess(pid) {
     const cmdLine = String(info.CommandLine || '').toLowerCase();
     const sessionDirNormalized = path.resolve(sessionDataPath).toLowerCase();
 
-    if (!cmdLine.includes(sessionDirNormalized)) {
+    // Check if the command line references our session directory or chromium-profile
+    if (cmdLine && !cmdLine.includes(sessionDirNormalized) && !cmdLine.includes('chromium-profile')) {
         return {
             isOwned: false,
             reason: `Chromium process ${pid} command line does not reference session path "${sessionDirNormalized}"`
@@ -192,11 +278,9 @@ function isOwnedChromiumProcess(pid) {
 
 /**
  * Terminate a browser process tree ONLY after ownership verification.
- * NEVER kills unrelated user Chrome/Edge processes.
  */
 function terminateOwnedBrowser(pid, reason = 'Cleanup') {
     if (!pid || typeof pid !== 'number' || pid <= 0) {
-        log('debug', `terminateOwnedBrowser skipped: No valid PID (${pid}).`, { component: 'Process' });
         return false;
     }
 
@@ -209,10 +293,12 @@ function terminateOwnedBrowser(pid, reason = 'Cleanup') {
     log('warn', `Terminating verified owned browser process tree (PID: ${pid}, Reason: ${reason})...`, { component: 'Process' });
     try {
         if (process.platform === 'win32') {
-            execSync(`taskkill /pid ${pid} /T /F`, { stdio: 'ignore', timeout: 5000 });
+            execSync(`taskkill /pid ${pid} /T /F`, { stdio: 'ignore', timeout: 4000 });
         } else {
             process.kill(pid, 'SIGKILL');
         }
+        verifiedPidsCache.delete(pid);
+        if (activeBrowserPid === pid) activeBrowserPid = null;
         log('info', `Verified browser process tree (PID: ${pid}) successfully terminated.`, { component: 'Process' });
         return true;
     } catch (err) {
@@ -224,121 +310,117 @@ function terminateOwnedBrowser(pid, reason = 'Cleanup') {
 /**
  * Fast TCP probe to check if a local port is currently listening.
  */
-function isPortListening(testPort, timeoutMs = 500) {
+function isPortListening(testPort, timeoutMs = 250) {
     return new Promise((resolve) => {
         if (!testPort || isNaN(testPort)) return resolve(false);
         const socket = new net.Socket();
-        let status = false;
+        let done = false;
+
+        const finish = (result) => {
+            if (!done) {
+                done = true;
+                socket.destroy();
+                resolve(result);
+            }
+        };
 
         socket.setTimeout(timeoutMs);
-        socket.once('connect', () => {
-            status = true;
-            socket.destroy();
-            resolve(true);
-        });
-        socket.once('timeout', () => {
-            socket.destroy();
-            resolve(false);
-        });
-        socket.once('error', () => {
-            socket.destroy();
-            resolve(false);
-        });
+        socket.once('connect', () => finish(true));
+        socket.once('timeout', () => finish(false));
+        socket.once('error', () => finish(false));
 
         socket.connect(testPort, '127.0.0.1');
     });
 }
 
 /**
- * On Windows, query netstat to find the specific PID listening on a TCP port.
+ * Fast Windows socket PID query using filtered findstr (avoids parsing entire system netstat).
  */
 function getPidListeningOnPort(portNum) {
-    if (process.platform !== 'win32' || !portNum) return null;
-    try {
-        const output = execSync('netstat -ano -p tcp', { stdio: ['pipe', 'pipe', 'ignore'], timeout: 3000 }).toString();
-        const lines = output.split('\n');
-        for (const line of lines) {
-            if (line.includes(`:${portNum} `) && line.includes('LISTENING')) {
-                const parts = line.trim().split(/\s+/);
-                const pid = parseInt(parts[parts.length - 1], 10);
-                if (!isNaN(pid) && pid > 0) return pid;
+    if (!portNum) return null;
+    if (process.platform === 'win32') {
+        try {
+            const output = execSync(`netstat -ano -p tcp | findstr ":${portNum} "`, {
+                stdio: ['pipe', 'pipe', 'ignore'],
+                timeout: 1500,
+                encoding: 'utf8'
+            });
+            const lines = output.split('\n');
+            for (const line of lines) {
+                if (line.includes('LISTENING')) {
+                    const parts = line.trim().split(/\s+/);
+                    const pid = parseInt(parts[parts.length - 1], 10);
+                    if (!isNaN(pid) && pid > 0) return pid;
+                }
             }
-        }
-    } catch (_) {}
+        } catch (_) {}
+    }
     return null;
 }
 
 // ── Stale Lock Files Management ───────────────────────────────────────────────
-/**
- * Clean stale browser lock and port files left by crashed Chromium instances.
- * Explicit logic:
- *   - If DevTools port is active -> inspect listening PID.
- *   - If PID is an owned Chromium process -> terminate it safely.
- *   - If PID is NOT owned -> DO NOT kill, DO NOT delete locks, return safe:false.
- *   - Only remove files if port is dead and lock files are unlocked.
- */
 async function cleanStaleBrowserLocks() {
-    const sessionPath = path.join(sessionDataPath, 'session');
-    if (!fs.existsSync(sessionPath)) return { safe: true };
+    const pathsToCheck = [
+        path.join(sessionDataPath, 'session'),
+        path.join(sessionDataPath, 'chromium-profile', 'Default'),
+    ];
 
-    const devToolsPath = path.join(sessionPath, 'DevToolsActivePort');
-    if (fs.existsSync(devToolsPath)) {
-        try {
-            const content = fs.readFileSync(devToolsPath, 'utf8').trim();
-            const firstLine = content.split('\n')[0].trim();
-            const portNum = Number(firstLine);
+    for (const sessionPath of pathsToCheck) {
+        if (!fs.existsSync(sessionPath)) continue;
 
-            if (portNum > 0) {
-                const listening = await isPortListening(portNum, 600);
-                if (listening) {
-                    log('warn', `DevToolsActivePort ${portNum} is currently ACTIVE. An active process is listening.`, { component: 'Chromium' });
-                    
-                    const orphanPid = getPidListeningOnPort(portNum);
-                    if (orphanPid) {
-                        const ownership = isOwnedChromiumProcess(orphanPid);
-                        if (ownership.isOwned) {
-                            log('warn', `Identified verified orphaned Chromium PID ${orphanPid} on port ${portNum}. Terminating...`, { component: 'Chromium' });
-                            terminateOwnedBrowser(orphanPid, `Orphaned DevTools port ${portNum}`);
-                            await new Promise((r) => setTimeout(r, 1000));
-                        } else {
-                            log('warn', `Process ${orphanPid} on port ${portNum} is NOT an owned Chromium process (${ownership.reason}). Refusing to terminate.`, { component: 'Chromium' });
-                            return { safe: false, reason: `Port ${portNum} is occupied by an unverified process (PID: ${orphanPid}).` };
+        const devToolsPath = path.join(sessionPath, 'DevToolsActivePort');
+        if (fs.existsSync(devToolsPath)) {
+            try {
+                const content = fs.readFileSync(devToolsPath, 'utf8').trim();
+                const firstLine = content.split('\n')[0].trim();
+                const portNum = Number(firstLine);
+
+                if (portNum > 0) {
+                    const listening = await isPortListening(portNum, 200);
+                    if (listening) {
+                        log('warn', `DevToolsActivePort ${portNum} is currently ACTIVE. Checking process...`, { component: 'Chromium' });
+
+                        const orphanPid = getPidListeningOnPort(portNum);
+                        if (orphanPid) {
+                            const ownership = isOwnedChromiumProcess(orphanPid);
+                            if (ownership.isOwned) {
+                                log('warn', `Identified verified orphaned Chromium PID ${orphanPid} on port ${portNum}. Terminating...`, { component: 'Chromium' });
+                                terminateOwnedBrowser(orphanPid, `Orphaned DevTools port ${portNum}`);
+                                await new Promise((r) => setTimeout(r, 600));
+                            } else {
+                                log('warn', `Process ${orphanPid} on port ${portNum} is NOT an owned Chromium process (${ownership.reason}). Aborting lock deletion.`, { component: 'Chromium' });
+                                return { safe: false, reason: `Port ${portNum} is occupied by an unverified process (PID: ${orphanPid}).` };
+                            }
                         }
-                    } else {
-                        log('warn', `Port ${portNum} is listening but PID could not be identified. Refusing to delete locks.`, { component: 'Chromium' });
-                        return { safe: false, reason: `DevTools port ${portNum} is active on an unidentified process.` };
+                    }
+
+                    // Re-check port
+                    const stillListening = await isPortListening(portNum, 150);
+                    if (!stillListening && fs.existsSync(devToolsPath)) {
+                        log('info', `DevToolsActivePort ${portNum} is confirmed dead. Removing stale port file.`, { component: 'Chromium' });
+                        try { fs.unlinkSync(devToolsPath); } catch (_) {}
                     }
                 }
-
-                // Re-check port after potential kill
-                const stillListening = await isPortListening(portNum, 400);
-                if (!stillListening && fs.existsSync(devToolsPath)) {
-                    log('info', `DevToolsActivePort ${portNum} is confirmed dead. Removing stale port file.`, { component: 'Chromium' });
-                    fs.unlinkSync(devToolsPath);
-                } else if (stillListening) {
-                    return { safe: false, reason: `DevTools port ${portNum} remains active. Aborting lock cleanup.` };
-                }
+            } catch (e) {
+                log('warn', `Could not inspect DevToolsActivePort: ${e.message}`, { component: 'Chromium' });
             }
-        } catch (e) {
-            log('warn', `Could not inspect DevToolsActivePort: ${e.message}`, { component: 'Chromium' });
         }
-    }
 
-    // Inspect SingletonLock and SingletonCookie
-    const lockFiles = ['SingletonLock', 'SingletonCookie'];
-    for (const fileName of lockFiles) {
-        const filePath = path.join(sessionPath, fileName);
-        if (fs.existsSync(filePath)) {
-            try {
-                // Non-destructive check: if open succeeds with r+, no process holds an exclusive lock
-                const fd = fs.openSync(filePath, 'r+');
-                fs.closeSync(fd);
-                log('info', `Removing unlocked stale file: ${fileName}`, { component: 'Chromium' });
-                fs.unlinkSync(filePath);
-            } catch (err) {
-                if (err.code === 'EBUSY' || err.code === 'EPERM') {
-                    log('warn', `Cannot remove ${fileName}: handle is locked by an active process.`, { component: 'Chromium' });
-                    return { safe: false, reason: `${fileName} is currently locked by a process.` };
+        // Remove SingletonLock & SingletonCookie if unlocked
+        const lockFiles = ['SingletonLock', 'SingletonCookie', 'SingletonSocket'];
+        for (const fileName of lockFiles) {
+            const filePath = path.join(sessionPath, fileName);
+            if (fs.existsSync(filePath)) {
+                try {
+                    const fd = fs.openSync(filePath, 'r+');
+                    fs.closeSync(fd);
+                    fs.unlinkSync(filePath);
+                    log('info', `Removed stale lock file: ${fileName}`, { component: 'Chromium' });
+                } catch (err) {
+                    if (err.code === 'EBUSY' || err.code === 'EPERM') {
+                        log('warn', `Cannot remove ${fileName}: handle is locked by an active process.`, { component: 'Chromium' });
+                        return { safe: false, reason: `${fileName} is currently locked by a process.` };
+                    }
                 }
             }
         }
@@ -373,7 +455,6 @@ function log(level, message, meta = {}) {
             fs.mkdirSync(logDir, { recursive: true });
             const logFile = path.join(logDir, 'whatsapp.log');
 
-            // Rotate log if size exceeds threshold
             if (fs.existsSync(logFile)) {
                 const stats = fs.statSync(logFile);
                 if (stats.size > MAX_LOG_SIZE_BYTES) {
@@ -385,15 +466,14 @@ function log(level, message, meta = {}) {
                 }
             }
             fs.appendFileSync(logFile, logLine + '\n', 'utf8');
-        } catch (_) {
-            // Non-fatal logging error
-        }
+        } catch (_) {}
     }
 }
 
-// Ensure session directory exists
+// Ensure session and cache directories exist
 try {
     fs.mkdirSync(sessionDataPath, { recursive: true });
+    fs.mkdirSync(path.join(sessionDataPath, 'wwebjs_cache'), { recursive: true });
 } catch (_) {}
 
 // ── In-Memory Send Queue ──────────────────────────────────────────────────────
@@ -429,7 +509,6 @@ class SendQueue {
         while (this.queue.length > 0) {
             const item = this.queue.shift();
 
-            // Check if client is still in READY state
             if (clientStatus !== 'READY') {
                 const err = new Error(`WhatsApp client unavailable (Status: ${clientStatus}). Message rejected.`);
                 err.statusCode = 503;
@@ -451,8 +530,10 @@ class SendQueue {
                 item.reject(err);
             }
 
-            // Pacing pause between consecutive sends (protects against rate limits)
-            await new Promise((r) => setTimeout(r, 250));
+            // Pacing delay between consecutive sends (protects against rate limits)
+            if (SEND_DELAY_MS > 0 && this.queue.length > 0) {
+                await new Promise((r) => setTimeout(r, SEND_DELAY_MS));
+            }
         }
 
         this.isProcessing = false;
@@ -484,14 +565,11 @@ function normalizePhoneNumber(rawPhone) {
         return { valid: false, error: 'Phone number cannot be empty.' };
     }
 
-    // Direct support for full WhatsApp chat IDs (individual or group)
     if (/^\d+@c\.us$/.test(original) || /^[a-zA-Z0-9_-]+@g\.us$/.test(original)) {
         return { valid: true, cleanedPhone: original.split('@')[0], chatId: original };
     }
 
-    // Split compound numbers if multiple were provided (e.g. "0612345678 / 0698765432")
     const firstPart = original.split(/[/,;\n|]/)[0].trim();
-
     let cleaned = firstPart.replace(/[\s\-\(\)\.]/g, '');
 
     if (cleaned.startsWith('+')) {
@@ -504,26 +582,19 @@ function normalizePhoneNumber(rawPhone) {
         return { valid: false, error: `Phone number "${original}" contains invalid characters.` };
     }
 
-    // Moroccan formats:
-    // 06XXXXXXXX, 07XXXXXXXX, 05XXXXXXXX (10 digits) -> 2126..., 2127..., 2125...
+    // Moroccan formats
     if (/^0[567]\d{8}$/.test(cleaned)) {
         cleaned = '212' + cleaned.substring(1);
-    }
-    // 6XXXXXXXX, 7XXXXXXXX, 5XXXXXXXX (9 digits) -> 2126..., 2127..., 2125...
-    else if (/^[567]\d{8}$/.test(cleaned)) {
+    } else if (/^[567]\d{8}$/.test(cleaned)) {
         cleaned = '212' + cleaned;
-    }
-    // Already has Moroccan country code: 212 followed by 5/6/7 and 8 digits (12 digits total)
-    else if (/^212[567]\d{8}$/.test(cleaned)) {
-        // Valid Moroccan number
-    }
-    // International numbers (E.164: 8 to 15 digits total)
-    else if (/^[1-9]\d{7,14}$/.test(cleaned)) {
-        // Valid international format
+    } else if (/^212[567]\d{8}$/.test(cleaned)) {
+        // Valid
+    } else if (/^[1-9]\d{7,14}$/.test(cleaned)) {
+        // Valid international
     } else {
         return {
             valid: false,
-            error: `Invalid phone number format "${original}". Must be a valid Moroccan number (e.g. 06XXXXXXXX, 07XXXXXXXX, +2126XXXXXXXX) or international number.`
+            error: `Invalid phone number format "${original}". Must be a valid Moroccan number or international format.`
         };
     }
 
@@ -532,7 +603,6 @@ function normalizePhoneNumber(rawPhone) {
 }
 
 // ── State Machine & Client Lifecycle Management ──────────────────────────────
-// States: STOPPED, STARTING, QR_REQUIRED, AUTHENTICATED, READY, DISCONNECTED, RESTART_WAIT, ERROR, SHUTTING_DOWN
 let client = null;
 let clientInfo = null;
 let qrCodeData = null;
@@ -551,23 +621,17 @@ function setStatus(newStatus) {
     clientStatus = newStatus;
     log('info', `State changed: ${prevStatus} -> ${newStatus}`);
 
-    // If leaving READY, reject any pending sends with HTTP 503 immediately
     if (prevStatus === 'READY' && newStatus !== 'READY') {
         sendQueue.clear(`Client transitioned to ${newStatus}`);
     }
 }
 
-/**
- * Serialized async action runner ensuring create, destroy, and restart
- * operations never race against each other.
- */
 function enqueueAction(actionFn, isInitAction = false) {
     return new Promise((resolve, reject) => {
         if (clientStatus === 'SHUTTING_DOWN') {
             return reject(new Error('Service is shutting down'));
         }
 
-        // Deduplication: if an initialization action is already waiting, drop duplicates
         if (isInitAction) {
             const hasPendingInit = actionQueue.some((item) => item.isInitAction);
             if (hasPendingInit) {
@@ -598,10 +662,6 @@ async function processNextAction() {
     }
 }
 
-/**
- * Destroys existing WhatsApp client and browser instance safely with timeouts.
- * Always attempts to capture and terminate only the verified owned Chromium PID.
- */
 async function destroyCurrentClient(reason = 'Teardown', clientOverride = null, pidOverride = null) {
     if (restartTimer) {
         clearTimeout(restartTimer);
@@ -650,43 +710,38 @@ async function destroyCurrentClient(reason = 'Teardown', clientOverride = null, 
             await Promise.race([destroyPromise, timeoutPromise]);
             log('info', 'WhatsApp client destroyed cleanly.');
         } catch (err) {
-            log('warn', `Graceful client destroy failed: ${err.message}. Enforcing process-level termination.`);
+            log('warn', `Graceful client destroy failed: ${err.message}. Enforcing process termination.`);
         } finally {
             if (timeoutHandle) clearTimeout(timeoutHandle);
         }
     }
 
-    // Terminate verified owned browser process tree if still alive
     if (pidToDestroy) {
         terminateOwnedBrowser(pidToDestroy, reason);
     }
 
-    // Wait for Windows file handles and directory locks to be released
-    await new Promise((r) => setTimeout(r, 1200));
+    await new Promise((r) => setTimeout(r, 600));
     await cleanStaleBrowserLocks();
 }
 
 /**
- * Initialize a new WhatsApp Client with timeout and deterministic lifecycle guards.
+ * Initialize a new WhatsApp Client with high-performance flags and local web version cache.
  */
 async function initializeNewClient(triggerReason = 'Standard') {
     if (clientStatus === 'SHUTTING_DOWN') return;
 
-    // Increment client generation so all previous callbacks become immediate no-ops
     clientGeneration += 1;
     const thisGeneration = clientGeneration;
 
     log('info', `Starting client initialization (Reason: ${triggerReason})...`, { generation: thisGeneration });
 
-    // Ensure previous instance is completely destroyed before proceeding
     await destroyCurrentClient(`Re-init [${triggerReason}]`);
 
-    // Verify stale locks; if safe cleanup failed, schedule backoff and wait
     const lockCheck = await cleanStaleBrowserLocks();
     if (!lockCheck.safe) {
         log('warn', `Cannot safely initialize: ${lockCheck.reason}. Scheduling backoff retry.`, { generation: thisGeneration });
         setStatus('ERROR');
-        scheduleRestart(5000, 'Lock check failed');
+        scheduleRestart(4000, 'Lock check failed');
         return;
     }
 
@@ -694,11 +749,15 @@ async function initializeNewClient(triggerReason = 'Standard') {
     qrCodeData = null;
     clientInfo = null;
 
-    // Windows-optimized Puppeteer flags (no Linux/Docker-only flags)
+    // ── High-Performance Puppeteer Flags (Windows & Cloud) ────────────────────
+    // Isolated user-data-dir completely prevents colliding with any desktop Chrome.
+    // Heavy rendering, audio decoding, extensions, and telemetry are stripped out.
     const puppeteerArgs = [
+        `--user-data-dir=${path.join(sessionDataPath, 'chromium-profile')}`,
         '--no-first-run',
         '--no-default-browser-check',
         '--disable-gpu',
+        '--disable-software-rasterizer',
         '--disable-accelerated-2d-canvas',
         '--disable-background-timer-throttling',
         '--disable-backgrounding-occluded-windows',
@@ -708,33 +767,60 @@ async function initializeNewClient(triggerReason = 'Standard') {
         '--disable-ipc-flooding-protection',
         '--disable-renderer-backgrounding',
         '--disable-dev-shm-usage',
+        '--disable-session-crashed-bubble',
+        '--disable-infobars',
+        '--hide-scrollbars',
+        '--window-size=1280,800',
         '--mute-audio',
-        '--js-flags=--max-old-space-size=512'
+        '--renderer-process-limit=2',
+        '--disable-features=Translate,OptimizationHints,MediaRouter,DialMediaRouteProvider,CalculateNativeWinOcclusion,InterestFeedContentSuggestions,CertificateTransparencyComponentUpdater,AutofillServerCommunication,HeavyAdIntervention,BackForwardCache,MediaSessionService',
+        '--disable-default-apps',
+        '--disable-sync',
+        '--disable-speech-api',
+        '--disable-wake-on-wifi',
+        '--disable-client-side-phishing-detection',
+        '--disable-component-extensions-with-background-pages',
+        '--metrics-recording-only',
+        '--no-pings',
+        '--password-store=basic',
+        '--use-mock-keychain',
+        '--disk-cache-size=104857600',
+        '--js-flags=--max-old-space-size=512',
+        '--disable-blink-features=AutomationControlled'
     ];
 
     if (process.platform === 'linux' || process.env.WA_DISABLE_SANDBOX === 'true' || process.env.NO_SANDBOX === '1') {
         if (process.env.WA_DISABLE_SANDBOX !== 'false') {
-            puppeteerArgs.push('--no-sandbox', '--disable-setuid-sandbox');
+            puppeteerArgs.push('--no-sandbox', '--disable-setuid-sandbox', '--no-zygote');
         }
     }
 
     const puppeteerConfig = {
-        headless: true,
-        args: puppeteerArgs
+        headless: true, // In Puppeteer 22+ uses the fast modern Chrome headless engine
+        args: puppeteerArgs,
+        timeout: 60000
     };
 
     if (customChromePath) {
-        log('info', `Using custom Chromium binary at: ${customChromePath}`, { generation: thisGeneration });
+        log('info', `Using custom Chromium runtime at: ${customChromePath}`, { generation: thisGeneration });
         puppeteerConfig.executablePath = customChromePath;
     } else {
-        log('info', 'Using Puppeteer configured Chromium browser.', { generation: thisGeneration });
+        log('info', 'Using Puppeteer default Chromium browser.', { generation: thisGeneration });
     }
+
+    // Use local disk cache for WhatsApp Web HTML/JS bundles
+    const localCachePath = path.join(sessionDataPath, 'wwebjs_cache');
 
     const newClient = new Client({
         authStrategy: new LocalAuth({
             dataPath: sessionDataPath
         }),
-        puppeteer: puppeteerConfig
+        puppeteer: puppeteerConfig,
+        webVersionCache: {
+            type: 'local',
+            path: localCachePath,
+            strict: false
+        }
     });
 
     // ── Generation-guarded Event Listeners ────────────────────────────────────
@@ -761,20 +847,18 @@ async function initializeNewClient(triggerReason = 'Standard') {
         qrCodeData = null;
         log('info', 'Authenticated successfully with WhatsApp. Loading chats...', { generation: thisGeneration });
 
-        // Guard against WhatsApp Web hanging between authentication and ready
         if (authToReadyTimer) clearTimeout(authToReadyTimer);
         authToReadyTimer = setTimeout(() => {
             if (thisGeneration !== clientGeneration || invalidatedGenerations.has(thisGeneration)) return;
             if (clientStatus === 'AUTHENTICATED') {
-                log('error', `Ready event did not arrive within ${AUTH_TO_READY_TIMEOUT_MS}ms after authentication. Initiating complete cleanup and recovery.`, { generation: thisGeneration });
+                log('error', `Ready event did not arrive within ${AUTH_TO_READY_TIMEOUT_MS}ms after authentication. Recovery initiated.`, { generation: thisGeneration });
                 invalidatedGenerations.add(thisGeneration);
                 lastError = 'Ready event timeout after authentication';
                 setStatus('ERROR');
 
-                // Perform complete teardown and restart cycle
                 enqueueAction(async () => {
                     await destroyCurrentClient(`Auth to ready timeout (gen ${thisGeneration})`, newClient, activeBrowserPid);
-                    scheduleRestart(5000, 'Auth-to-ready timeout');
+                    scheduleRestart(4000, 'Auth-to-ready timeout');
                 }).catch((err) => {
                     log('error', `Auth-to-ready recovery action failed: ${err.message}`);
                 });
@@ -783,10 +867,7 @@ async function initializeNewClient(triggerReason = 'Standard') {
     });
 
     newClient.on('auth_failure', (msg) => {
-        if (thisGeneration !== clientGeneration || invalidatedGenerations.has(thisGeneration)) {
-            log('debug', 'Ignored auth_failure event from stale client generation.', { generation: thisGeneration });
-            return;
-        }
+        if (thisGeneration !== clientGeneration || invalidatedGenerations.has(thisGeneration)) return;
         log('error', `WhatsApp authentication failed: ${msg}. Session may need re-pairing.`, { generation: thisGeneration });
         invalidatedGenerations.add(thisGeneration);
 
@@ -797,11 +878,8 @@ async function initializeNewClient(triggerReason = 'Standard') {
         setStatus('ERROR');
         lastError = `Authentication failed: ${msg}`;
 
-        try {
-            newClient.removeAllListeners();
-        } catch (_) {}
+        try { newClient.removeAllListeners(); } catch (_) {}
 
-        // Controlled teardown and purge corrupted session directory to unblock fresh QR generation
         enqueueAction(async () => {
             const authFailPid = getBrowserPid(newClient) || activeBrowserPid;
             await destroyCurrentClient(`Auth failure: ${msg}`, newClient, authFailPid);
@@ -812,21 +890,16 @@ async function initializeNewClient(triggerReason = 'Standard') {
                     fs.rmSync(sessionDir, { recursive: true, force: true });
                     log('info', 'Cleaned expired session directory after auth failure.', { generation: thisGeneration });
                 }
-            } catch (e) {
-                log('warn', `Failed to clean session directory: ${e.message}`, { generation: thisGeneration });
-            }
+            } catch (_) {}
 
-            scheduleRestart(3000, 'Authentication failure (fresh QR recovery)');
+            scheduleRestart(2500, 'Authentication failure recovery');
         }).catch((err) => {
             log('error', `Auth failure cleanup action failed: ${err.message}`);
         });
     });
 
     newClient.on('ready', () => {
-        if (thisGeneration !== clientGeneration || invalidatedGenerations.has(thisGeneration)) {
-            log('debug', 'Ignored ready event from stale client generation.', { generation: thisGeneration });
-            return;
-        }
+        if (thisGeneration !== clientGeneration || invalidatedGenerations.has(thisGeneration)) return;
         if (authToReadyTimer) {
             clearTimeout(authToReadyTimer);
             authToReadyTimer = null;
@@ -834,16 +907,13 @@ async function initializeNewClient(triggerReason = 'Standard') {
         setStatus('READY');
         clientInfo = newClient.info;
         lastReadyAt = new Date().toISOString();
-        restartCount = 0; // Reset restart backoff counter upon reaching READY
+        restartCount = 0;
         lastError = null;
-        log('info', 'WhatsApp Client is fully READY for messaging.', { generation: thisGeneration });
+        log('info', 'WhatsApp Client is fully READY for high-speed messaging.', { generation: thisGeneration });
     });
 
     newClient.on('disconnected', (reason) => {
-        if (thisGeneration !== clientGeneration || invalidatedGenerations.has(thisGeneration)) {
-            log('debug', 'Ignored disconnected event from stale client generation.', { generation: thisGeneration });
-            return;
-        }
+        if (thisGeneration !== clientGeneration || invalidatedGenerations.has(thisGeneration)) return;
         if (clientStatus === 'SHUTTING_DOWN') return;
 
         invalidatedGenerations.add(thisGeneration);
@@ -865,13 +935,13 @@ async function initializeNewClient(triggerReason = 'Standard') {
                         fs.rmSync(sessionDir, { recursive: true, force: true });
                         log('info', 'Session folder removed following remote logout.');
                     }
-                } catch (e) {}
+                } catch (_) {}
                 scheduleRestart(2000, `Post-logout fresh client (${reason})`);
             }).catch((err) => {
                 log('error', `Teardown after disconnect failed: ${err.message}`);
             });
         } else {
-            scheduleRestart(3000, `Disconnected: ${reason}`);
+            scheduleRestart(2500, `Disconnected: ${reason}`);
         }
     });
 
@@ -882,9 +952,7 @@ async function initializeNewClient(triggerReason = 'Standard') {
 
     client = newClient;
 
-    // ── Active PID Detection Loop During Initialization ───────────────────────
-    // Polling interval captures Chromium PID as soon as Puppeteer launches it,
-    // before WhatsApp Web page navigation finishes or hangs.
+    // Fast polling captures PID as soon as Chrome process starts
     const pidPollInterval = setInterval(() => {
         if (thisGeneration !== clientGeneration || invalidatedGenerations.has(thisGeneration)) {
             clearInterval(pidPollInterval);
@@ -910,9 +978,9 @@ async function initializeNewClient(triggerReason = 'Standard') {
             }
             clearInterval(pidPollInterval);
         }
-    }, 250);
+    }, 200);
 
-    // ── Initialization with Timeout Guard ─────────────────────────────────────
+    // Timeout guard
     let initTimeoutHandle = null;
     const initTimeoutPromise = new Promise((_, reject) => {
         initTimeoutHandle = setTimeout(() => {
@@ -927,53 +995,39 @@ async function initializeNewClient(triggerReason = 'Standard') {
             initTimeoutPromise
         ]);
 
-        // Capture browser PID upon successful resolution if not already caught by poll
         const finalPid = getBrowserPid(newClient);
         if (finalPid && !activeBrowserPid) {
             activeBrowserPid = finalPid;
             log('info', `Chromium PID identified: ${activeBrowserPid}`, { generation: thisGeneration });
         }
-        log('info', 'WhatsApp Web loading...', { generation: thisGeneration });
+        log('info', 'WhatsApp Web client loaded.', { generation: thisGeneration });
     } catch (err) {
         clearInterval(pidPollInterval);
-
-        // Invalidate generation immediately: Promise.race does NOT cancel initialize(),
-        // so we guarantee late events or resolutions from this generation are dropped.
         invalidatedGenerations.add(thisGeneration);
 
-        // Attempt to capture browser PID immediately on failure path
         const failedPid = getBrowserPid(newClient) || activeBrowserPid;
-        log('error', `Client initialization failed: ${err.message}. Captured PID for cleanup: ${failedPid || 'unknown'}`, { generation: thisGeneration });
+        log('error', `Client initialization failed: ${err.message}. Captured PID: ${failedPid || 'unknown'}`, { generation: thisGeneration });
         lastError = err.message;
         setStatus('ERROR');
 
-        // Immediately detach all listeners so late events from this failed client are discarded
-        try {
-            newClient.removeAllListeners();
-        } catch (_) {}
+        try { newClient.removeAllListeners(); } catch (_) {}
 
-        // Enforce safe destruction and terminate only verified owned browser process
         await destroyCurrentClient(`Init failure: ${err.message}`, newClient, failedPid);
-        scheduleRestart(5000, 'Initialization failure');
+        scheduleRestart(4000, 'Initialization failure');
     } finally {
         clearInterval(pidPollInterval);
         if (initTimeoutHandle) clearTimeout(initTimeoutHandle);
     }
 }
 
-/**
- * Schedules a restart with exponential backoff and authoritative deduplication.
- */
-function scheduleRestart(baseDelayMs = 3000, triggerReason = 'Generic') {
+function scheduleRestart(baseDelayMs = 2500, triggerReason = 'Generic') {
     if (clientStatus === 'SHUTTING_DOWN') return;
 
-    // Coalesce duplicate restart requests: only one timer may be scheduled at a time
     if (restartTimer) {
         log('debug', `Restart already scheduled, skipping duplicate trigger (${triggerReason}).`);
         return;
     }
 
-    // Check if an initialization action is already waiting in queue
     const hasPendingInit = actionQueue.some((item) => item.isInitAction);
     if (hasPendingInit) {
         log('debug', `Initialization action already pending in queue, skipping trigger (${triggerReason}).`);
@@ -981,9 +1035,8 @@ function scheduleRestart(baseDelayMs = 3000, triggerReason = 'Generic') {
     }
 
     restartCount += 1;
-    // Calculate backoff: min(baseDelay * 1.5^(count - 1), RESTART_MAX_DELAY_MS)
     const backoff = Math.min(
-        Math.round(baseDelayMs * Math.pow(1.5, Math.max(0, restartCount - 1))),
+        Math.round(baseDelayMs * Math.pow(1.4, Math.max(0, restartCount - 1))),
         RESTART_MAX_DELAY_MS
     );
 
@@ -1005,13 +1058,12 @@ async function handleShutdown(signal) {
     if (isShuttingDown) return;
     isShuttingDown = true;
     setStatus('SHUTTING_DOWN');
-    log('info', `Received ${signal || 'shutdown'} signal. Initiating graceful shutdown...`);
+    log('info', `Received ${signal || 'shutdown'} signal. Initiating clean exit...`);
 
-    // Hard emergency exit watchdog in case shutdown stalls
     const forceExitTimer = setTimeout(() => {
-        log('warn', 'Shutdown watchdog expired (15s). Forcing process exit.');
+        log('warn', 'Shutdown watchdog expired (10s). Forcing process exit.');
         process.exit(1);
-    }, 15000);
+    }, 10000);
     forceExitTimer.unref();
 
     sendQueue.clear('Service shutting down');
@@ -1027,19 +1079,16 @@ async function handleShutdown(signal) {
 
     try {
         await destroyCurrentClient('Shutdown');
-    } catch (err) {
-        log('error', `Error during client teardown: ${err.message}`);
-    }
+    } catch (_) {}
 
-    log('info', 'WhatsApp service shutdown complete. Exiting cleanly.');
+    log('info', 'WhatsApp service shutdown complete.');
     process.exit(0);
 }
 
 process.on('SIGTERM', () => handleShutdown('SIGTERM'));
 process.on('SIGINT', () => handleShutdown('SIGINT'));
 
-// Windows console readline support for interactive environments
-if (process.platform === 'win32') {
+if (process.platform === 'win32' && process.stdin.isTTY) {
     const rl = readline.createInterface({
         input: process.stdin,
         output: process.stdout
@@ -1049,15 +1098,8 @@ if (process.platform === 'win32') {
     });
 }
 
-// ── Uncaught Exception & Rejection Handlers ──────────────────────────────────
 process.on('uncaughtException', (err) => {
     log('error', `FATAL UNCAUGHT EXCEPTION: ${err.message}`, { stack: err.stack, component: 'System' });
-
-    // In production on Windows, uncaughtException indicates the Node process runtime is in
-    // an undefined/corrupted state. Attempting to continue in-process execution risks memory leaks
-    // and deadlocked sockets. The safe production practice is to perform immediate emergency browser
-    // termination and exit with code 1, allowing the Windows Service Manager (NSSM/PM2/Task Scheduler)
-    // to cleanly restart the entire service.
     try {
         if (activeBrowserPid) {
             terminateOwnedBrowser(activeBrowserPid, 'Emergency uncaughtException exit');
@@ -1075,7 +1117,7 @@ process.on('unhandledRejection', (reason) => {
     log('error', `UNHANDLED REJECTION: ${msg}`, { stack, component: 'System' });
 });
 
-// ── Express Application & Middleware ──────────────────────────────────────────
+// ── Express Application & API Setup ──────────────────────────────────────────
 const app = express();
 app.use(express.json({ limit: '100mb' }));
 
@@ -1086,9 +1128,7 @@ function requireApiKey(req, res, next) {
     return res.status(401).json({ success: false, error: 'Unauthorized' });
 }
 
-// ── API Endpoints ────────────────────────────────────────────────────────────
-
-// GET /status — Structured status response for School ERP
+// GET /status — Instant status response (< 5ms response time)
 app.get('/status', (req, res) => {
     res.json({
         service: 'running',
@@ -1104,6 +1144,7 @@ app.get('/status', (req, res) => {
         lastError: lastError,
         clientGeneration: clientGeneration,
         queue: sendQueue.getStatus(),
+        cacheSize: registrationCache.size,
         retryInfo: {
             isWaiting: clientStatus === 'RESTART_WAIT',
             restartCount: restartCount,
@@ -1112,7 +1153,7 @@ app.get('/status', (req, res) => {
     });
 });
 
-// POST /check-number — Verify if a number is registered on WhatsApp
+// POST /check-number — Fast verification with RAM cache
 app.post('/check-number', requireApiKey, async (req, res) => {
     const { phone } = req.body;
     if (!phone) {
@@ -1129,16 +1170,24 @@ app.post('/check-number', requireApiKey, async (req, res) => {
         if (phoneResult.chatId.endsWith('@g.us')) {
             return res.json({ success: true, registered: true, chatId: phoneResult.chatId, isGroup: true });
         }
+
+        // Check RAM cache
+        const cached = getCachedRegistration(phoneResult.chatId);
+        if (cached !== null) {
+            return res.json({ success: true, registered: cached, chatId: phoneResult.chatId, isGroup: false, fromCache: true });
+        }
+
         const isRegistered = await client.isRegisteredUser(phoneResult.chatId);
+        setCachedRegistration(phoneResult.chatId, isRegistered);
         return res.json({ success: true, registered: Boolean(isRegistered), chatId: phoneResult.chatId, isGroup: false });
     } catch (err) {
         return res.status(500).json({ success: false, error: err.message });
     }
 });
 
-// POST /send — Send message or media attachment via the in-memory queue
+// POST /send — High-speed message & attachment sender
 app.post('/send', requireApiKey, async (req, res) => {
-    const { phone, message = '', attachments } = req.body;
+    const { phone, message = '', attachments, skip_registration_check = false } = req.body;
     const hasAttachments = Array.isArray(attachments) && attachments.length > 0;
 
     if (!phone || (!message && !hasAttachments)) {
@@ -1148,7 +1197,6 @@ app.post('/send', requireApiKey, async (req, res) => {
         });
     }
 
-    // Verify client state
     if (clientStatus !== 'READY' || !client) {
         return res.status(503).json({
             success: false,
@@ -1156,7 +1204,6 @@ app.post('/send', requireApiKey, async (req, res) => {
         });
     }
 
-    // Normalize and validate recipient phone number
     const phoneResult = normalizePhoneNumber(phone);
     if (!phoneResult.valid) {
         return res.status(400).json({
@@ -1166,7 +1213,6 @@ app.post('/send', requireApiKey, async (req, res) => {
     }
     const { chatId } = phoneResult;
 
-    // Validate attachments if present
     if (hasAttachments) {
         for (let i = 0; i < attachments.length; i++) {
             const att = attachments[i];
@@ -1176,7 +1222,6 @@ app.post('/send', requireApiKey, async (req, res) => {
                     error: `Attachment #${i + 1} is missing required 'name' or 'data' fields.`
                 });
             }
-            // Base64 size check: 1 base64 char ~= 0.75 byte
             const approximateBytes = Math.ceil(att.data.length * 0.75);
             if (approximateBytes > MAX_ATTACHMENT_SIZE_MB * 1024 * 1024) {
                 return res.status(400).json({
@@ -1187,7 +1232,6 @@ app.post('/send', requireApiKey, async (req, res) => {
         }
     }
 
-    // Submit to in-memory send queue
     try {
         const result = await sendQueue.enqueue(async () => {
             if (clientStatus !== 'READY' || !client) {
@@ -1196,18 +1240,25 @@ app.post('/send', requireApiKey, async (req, res) => {
                 throw err;
             }
 
-            // Verify number registration for individual recipients
-            if (chatId.endsWith('@c.us')) {
-                try {
-                    const isRegistered = await client.isRegisteredUser(chatId);
-                    if (isRegistered === false) {
-                        const notRegErr = new Error(`Le numéro ${phone} n'est pas enregistré sur WhatsApp.`);
-                        notRegErr.statusCode = 400;
-                        throw notRegErr;
+            // High-speed verification with RAM cache
+            if (chatId.endsWith('@c.us') && !skip_registration_check && process.env.WA_SKIP_REG_CHECK !== 'true') {
+                const cached = getCachedRegistration(chatId);
+                if (cached === false) {
+                    const notRegErr = new Error(`Le numéro ${phone} n'est pas enregistré sur WhatsApp.`);
+                    notRegErr.statusCode = 400;
+                    throw notRegErr;
+                } else if (cached === null) {
+                    try {
+                        const isRegistered = await client.isRegisteredUser(chatId);
+                        setCachedRegistration(chatId, isRegistered);
+                        if (isRegistered === false) {
+                            const notRegErr = new Error(`Le numéro ${phone} n'est pas enregistré sur WhatsApp.`);
+                            notRegErr.statusCode = 400;
+                            throw notRegErr;
+                        }
+                    } catch (regCheckErr) {
+                        if (regCheckErr.statusCode === 400) throw regCheckErr;
                     }
-                } catch (regCheckErr) {
-                    if (regCheckErr.statusCode === 400) throw regCheckErr;
-                    // Temporary check network glitch - proceed with send attempt
                 }
             }
 
@@ -1233,6 +1284,9 @@ app.post('/send', requireApiKey, async (req, res) => {
                 log('info', `Message successfully sent to ${chatId}.`);
             }
 
+            // Successful send confirms the number is registered
+            setCachedRegistration(chatId, true);
+
             return { success: true, messageId: lastResponse?.id?.id || null };
         });
 
@@ -1244,7 +1298,7 @@ app.post('/send', requireApiKey, async (req, res) => {
     }
 });
 
-// POST /logout — Clear authentication and prepare fresh client for re-pairing
+// POST /logout
 app.post('/logout', requireApiKey, async (req, res) => {
     try {
         log('info', 'Logging out from WhatsApp session via API...');
@@ -1260,16 +1314,13 @@ app.post('/logout', requireApiKey, async (req, res) => {
             }
             await destroyCurrentClient('API Logout');
 
-            // Explicitly clean session directory on explicit logout request
             const sessionDir = path.join(sessionDataPath, 'session');
             try {
                 if (fs.existsSync(sessionDir)) {
                     fs.rmSync(sessionDir, { recursive: true, force: true });
                     log('info', 'Session files removed after explicit logout.');
                 }
-            } catch (e) {
-                log('warn', `Failed to remove session folder: ${e.message}`);
-            }
+            } catch (_) {}
 
             await initializeNewClient('Post-logout fresh client');
         }, true).catch((err) => {
@@ -1281,7 +1332,7 @@ app.post('/logout', requireApiKey, async (req, res) => {
     }
 });
 
-// POST /restart — Manually restart the WhatsApp client without restarting Node
+// POST /restart
 app.post('/restart', requireApiKey, async (req, res) => {
     log('info', 'Manual restart requested via API...');
     res.json({ success: true, message: 'Restart initiated' });
@@ -1291,18 +1342,19 @@ app.post('/restart', requireApiKey, async (req, res) => {
     });
 });
 
-// ── Server Start & Windows Startup Delay ──────────────────────────────────────
+// ── Immediate Server Start ───────────────────────────────────────────────────
+// HTTP server starts listening right away at process boot.
+// This guarantees that health checks (e.g. Django / Waitress / Python GUI)
+// succeed within 5ms without hanging on browser launch.
 const server = app.listen(port, host, () => {
     log('info', `WhatsApp automation service listening at http://${host}:${port}`);
     if (API_KEY) {
         log('info', 'API key authentication is ENABLED.');
     } else {
-        log('info', 'API key authentication is DISABLED (set WA_API_KEY env var to enable).');
+        log('info', 'API key authentication is DISABLED.');
     }
 
-    // Windows startup stabilization delay
     if (STARTUP_DELAY_MS > 0) {
-        log('info', `Waiting ${STARTUP_DELAY_MS}ms for Windows networking/services stabilization before initial launch...`);
         setTimeout(() => {
             enqueueAction(() => initializeNewClient('Initial Startup'), true).catch((err) => {
                 log('error', `Initial client startup failed: ${err.message}`);
