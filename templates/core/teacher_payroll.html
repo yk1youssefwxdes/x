@@ -166,7 +166,213 @@
       </div>
     </div>
 
-    <!-- ── 3. DETAILS TABS ────────────────────────────────────────────── -->
+    <!-- ── 2.5. PAYMENT METHOD SPECIFIC BREAKDOWN ──────────────────── -->
+    {% if result.teacher.payment_method == 'PERCENTAGE' %}
+      <div class="card border-0 shadow-sm rounded-3 mb-4">
+        <div class="card-header bg-white py-3 px-4 d-flex align-items-center justify-content-between flex-wrap gap-2 border-bottom">
+          <div class="d-flex align-items-center gap-2">
+            <i class="bi bi-pie-chart-fill text-primary fs-5"></i>
+            <h5 class="fw-bold text-dark mb-0">Détail des Recettes & Part Professeur (Pourcentage : {{ result.teacher.payment_percentage|floatformat:0 }}%)</h5>
+          </div>
+          <div class="d-flex align-items-center gap-2 flex-wrap small">
+            <span class="badge bg-primary-subtle text-primary border border-primary-subtle px-3 py-1 fs-7">
+              {{ result.total_active_students|default:0 }} élèves au total
+            </span>
+            <span class="badge bg-success-subtle text-success border border-success-subtle px-3 py-1 fs-7">
+              {{ result.total_paid_students|default:0 }} payés ({{ result.global_recovery_rate|default:0 }}%)
+            </span>
+            <span class="badge bg-danger-subtle text-danger border border-danger-subtle px-3 py-1 fs-7">
+              {{ result.total_unpaid_students|default:0 }} impayés
+            </span>
+            <span class="badge bg-dark text-white px-3 py-1 fs-7">
+              Part Prof Totale : {{ result.salary_taught|floatformat:2 }} DH
+            </span>
+          </div>
+        </div>
+        <div class="card-body p-4">
+          {% if result.courses_breakdown %}
+            <div class="accordion" id="groupsAccordion">
+              {% for cb in result.courses_breakdown %}
+                <div class="card border mb-3 rounded-3 overflow-hidden shadow-2xs">
+                  <div class="card-header bg-light py-3 px-3 d-flex flex-wrap align-items-center justify-content-between gap-2" id="headingGroup{{ forloop.counter }}">
+                    <div class="d-flex align-items-center gap-2">
+                      <button class="btn btn-sm btn-outline-secondary p-1 px-2" type="button" data-bs-toggle="collapse" data-bs-target="#collapseGroup{{ forloop.counter }}" aria-expanded="true">
+                        <i class="bi bi-chevron-down"></i>
+                      </button>
+                      <div>
+                        <span class="fw-bold fs-6 text-dark">{{ cb.course.name }}</span>
+                        <span class="text-muted small ms-1">({{ cb.course.subject }})</span>
+                        <span class="ms-2">
+                          {% for l in cb.course.levels_list %}
+                            <span class="badge bg-primary-subtle text-primary border border-primary-subtle small me-1">{{ l.name }}</span>
+                          {% empty %}
+                            <span class="badge bg-light text-dark border small">Standard</span>
+                          {% endfor %}
+                        </span>
+                      </div>
+                    </div>
+
+                    <!-- Group KPI summary pills -->
+                    <div class="d-flex flex-wrap align-items-center gap-3 small">
+                      <div class="text-muted">
+                        Tarif : <strong>{{ cb.monthly_fee|floatformat:0 }} DH</strong>/m
+                      </div>
+                      <div class="text-muted">
+                        Élèves : <strong>{{ cb.student_count }}</strong>
+                        (<span class="text-success fw-bold">{{ cb.paid_count }} payé{{ cb.paid_count|pluralize }}</span>, <span class="text-danger fw-bold">{{ cb.unpaid_count }} impayé{{ cb.unpaid_count|pluralize }}</span>)
+                      </div>
+                      <div>
+                        Taux : <span class="badge {% if cb.recovery_pct >= 80 %}bg-success{% elif cb.recovery_pct >= 50 %}bg-warning text-dark{% else %}bg-danger{% endif %}">{{ cb.recovery_pct }}%</span>
+                      </div>
+                      <div>
+                        Recettes : <strong class="text-dark">{{ cb.collected_revenue|floatformat:2 }} DH</strong>
+                      </div>
+                      <div class="bg-success-subtle text-success px-2 py-1 rounded fw-bold border border-success-subtle">
+                        Part Prof : {{ cb.share_actual|floatformat:2 }} DH
+                      </div>
+                    </div>
+                  </div>
+
+                  <!-- Students detailed table inside accordion collapse -->
+                  <div id="collapseGroup{{ forloop.counter }}" class="collapse show" aria-labelledby="headingGroup{{ forloop.counter }}">
+                    <div class="card-body p-0">
+                      {% if cb.students_info %}
+                        <div class="table-responsive">
+                          <table class="table table-hover align-middle mb-0 small">
+                            <thead class="table-light">
+                              <tr>
+                                <th style="width: 40px;" class="text-center">#</th>
+                                <th>Élève</th>
+                                <th>Code</th>
+                                <th>Téléphone</th>
+                                <th class="text-end">Tarif Mensuel</th>
+                                <th class="text-end">Montant Réglé</th>
+                                <th class="text-center">Statut</th>
+                                <th>Date & Mode de règlement</th>
+                                <th class="text-end text-success fw-bold">Part Prof ({{ result.teacher.payment_percentage|floatformat:0 }}%)</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {% for st_item in cb.students_info %}
+                                <tr>
+                                  <td class="text-center text-muted">{{ forloop.counter }}</td>
+                                  <td>
+                                    <a href="{% url 'core:student_detail' st_item.student.id %}" class="fw-bold text-decoration-none text-dark">
+                                      {{ st_item.student.name }}
+                                    </a>
+                                  </td>
+                                  <td><span class="text-muted">{{ st_item.student.student_id|default:"—" }}</span></td>
+                                  <td><small class="text-muted">{{ st_item.student.phone|default:"—" }}</small></td>
+                                  <td class="text-end">{{ st_item.fee|floatformat:0 }} DH</td>
+                                  <td class="text-end fw-bold {% if st_item.status == 'PAID' %}text-success{% elif st_item.status == 'PARTIAL' %}text-warning-emphasis{% else %}text-danger{% endif %}">
+                                    {{ st_item.paid_amount|floatformat:0 }} DH
+                                  </td>
+                                  <td class="text-center">
+                                    {% if st_item.status == 'PAID' %}
+                                      <span class="badge bg-success-subtle text-success border border-success-subtle"><i class="bi bi-check-circle me-1"></i>Payé</span>
+                                    {% elif st_item.status == 'PARTIAL' %}
+                                      <span class="badge bg-warning-subtle text-warning-emphasis border border-warning-subtle"><i class="bi bi-pie-chart me-1"></i>Partiel</span>
+                                    {% else %}
+                                      <span class="badge bg-danger-subtle text-danger border border-danger-subtle"><i class="bi bi-x-circle me-1"></i>Impayé</span>
+                                    {% endif %}
+                                  </td>
+                                  <td>
+                                    {% if st_item.payment_date %}
+                                      <small>{{ st_item.payment_date|date:"d/m/Y" }} <span class="text-muted">({{ st_item.payment_method }})</span></small>
+                                    {% else %}
+                                      <small class="text-muted">—</small>
+                                    {% endif %}
+                                  </td>
+                                  <td class="text-end fw-bold text-success">{{ st_item.teacher_share|floatformat:2 }} DH</td>
+                                </tr>
+                              {% endfor %}
+                            </tbody>
+                            <tfoot class="table-light fw-bold">
+                              <tr>
+                                <td colspan="4">Sous-total {{ cb.course.name }}</td>
+                                <td class="text-end">{{ cb.gains_theoretical|floatformat:0 }} DH</td>
+                                <td class="text-end text-success">{{ cb.collected_revenue|floatformat:2 }} DH</td>
+                                <td class="text-center">{{ cb.recovery_pct }}%</td>
+                                <td></td>
+                                <td class="text-end text-success fs-6">{{ cb.share_actual|floatformat:2 }} DH</td>
+                              </tr>
+                            </tfoot>
+                          </table>
+                        </div>
+                      {% else %}
+                        <div class="text-center py-3 text-muted small">Aucun élève actif inscrit dans ce groupe.</div>
+                      {% endif %}
+                    </div>
+                  </div>
+                </div>
+              {% endfor %}
+            </div>
+          {% else %}
+            <div class="text-center py-4 text-muted">
+              <p class="mb-0">Aucun groupe actif rattaché à ce professeur.</p>
+            </div>
+          {% endif %}
+        </div>
+      </div>
+    {% elif result.teacher.payment_method == 'HOURLY' %}
+      <div class="card border-0 shadow-sm rounded-3 mb-4">
+        <div class="card-header bg-white py-3 px-4 d-flex align-items-center justify-content-between flex-wrap gap-2 border-bottom">
+          <div class="d-flex align-items-center gap-2">
+            <i class="bi bi-clock-history text-primary fs-5"></i>
+            <h5 class="fw-bold text-dark mb-0">Détail de la Rémunération au Taux Horaire ({{ result.hourly_rate|floatformat:0 }} DH / heure)</h5>
+          </div>
+          <div class="d-flex align-items-center gap-2 small">
+            <span class="badge bg-primary-subtle text-primary border border-primary-subtle px-3 py-1 fs-7">
+              {{ result.total_hours|floatformat:1 }} h enseignées
+            </span>
+            <span class="badge bg-success-subtle text-success border border-success-subtle px-3 py-1 fs-7">
+              Total : {{ result.salary_taught|floatformat:2 }} DH
+            </span>
+          </div>
+        </div>
+        <div class="card-body p-4">
+          {% if result.hourly_groups %}
+            <div class="table-responsive">
+              <h6 class="fw-bold text-dark mb-3"><i class="bi bi-collection text-primary me-1"></i> Récapitulatif par groupe</h6>
+              <table class="table table-hover align-middle mb-0">
+                <thead class="table-light">
+                  <tr>
+                    <th>Groupe</th>
+                    <th>Matière</th>
+                    <th class="text-center">Séances terminées</th>
+                    <th class="text-center">Heures effectuées</th>
+                    <th class="text-end">Taux Horaire</th>
+                    <th class="text-end text-success fw-bold">Sous-total dû</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {% for hg in result.hourly_groups %}
+                    <tr>
+                      <td><strong>{{ hg.group.name }}</strong></td>
+                      <td>{{ hg.group.subject }}</td>
+                      <td class="text-center"><span class="badge bg-light text-dark border">{{ hg.sessions_count }}</span></td>
+                      <td class="text-center fw-bold text-primary">{{ hg.hours_taught|floatformat:1 }} h</td>
+                      <td class="text-end">{{ hg.rate|floatformat:0 }} DH/h</td>
+                      <td class="text-end fw-bold text-success">{{ hg.subtotal|floatformat:2 }} DH</td>
+                    </tr>
+                  {% endfor %}
+                </tbody>
+                <tfoot class="table-light fw-bold">
+                  <tr>
+                    <td colspan="3">TOTAL HEURES</td>
+                    <td class="text-center text-primary">{{ result.total_hours|floatformat:1 }} h</td>
+                    <td>—</td>
+                    <td class="text-end text-success fs-6">{{ result.salary_taught|floatformat:2 }} DH</td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          {% endif %}
+        </div>
+      </div>
+    {% endif %}
+
+    <!-- ── 3. DETAILS TABS (PAYMENTS & SESSIONS) ────────────────────────── -->
     <div class="row g-4">
       
       <!-- Payments history for this period -->
@@ -250,6 +456,9 @@
                       <th>Groupe</th>
                       <th>Horaire</th>
                       <th class="text-end">Durée</th>
+                      {% if result.teacher.payment_method == 'HOURLY' or result.teacher.payment_method == 'SESSION' %}
+                        <th class="text-end">Sous-total</th>
+                      {% endif %}
                     </tr>
                   </thead>
                   <tbody>
@@ -263,6 +472,9 @@
                         </td>
                         <td><small class="text-muted">{{ item.session.start_time|time:"H:i" }} – {{ item.session.end_time|time:"H:i" }}</small></td>
                         <td class="text-end"><span class="badge bg-light text-dark border">{{ item.hours|floatformat:1 }}h</span></td>
+                        {% if result.teacher.payment_method == 'HOURLY' or result.teacher.payment_method == 'SESSION' %}
+                          <td class="text-end fw-bold text-success">{{ item.subtotal|floatformat:0 }} DH</td>
+                        {% endif %}
                       </tr>
                     {% endfor %}
                   </tbody>

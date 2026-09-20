@@ -930,9 +930,9 @@ def session_attendance(request, session_id):
 
 def teacher_payroll(request):
     """Calculate payroll for a teacher for a selected month."""
-    from .models import Teacher, Session, TeacherPayment
-    from .utils import calculate_teacher_hours
-    from django.db.models import Q
+    from .models import Teacher, Session, TeacherPayment, Payment
+    from .utils import calculate_teacher_hours, calculate_student_monthly_total
+    from django.db.models import Q, Sum
     from django.contrib import messages
     from datetime import date, datetime
     import calendar
@@ -1010,6 +1010,112 @@ def teacher_payroll(request):
 
             # Payroll calculation
             payroll_data = calculate_teacher_hours(teacher, start_d, end_d)
+
+            # Enrich payroll_data based on payment method
+            if teacher.payment_method == 'PERCENTAGE':
+                total_active_students = 0
+                total_paid_students = 0
+                total_unpaid_students = 0
+                total_group_revenue = Decimal('0.00')
+
+                for cb in payroll_data.get('courses_breakdown', []):
+                    c = cb['course']
+                    active_enrollments = list(c.enrollment_set.filter(is_active=True).select_related('student'))
+                    st_count = len(active_enrollments)
+                    monthly_fee = c.monthly_price or Decimal('0.00')
+                    group_paid_count = 0
+                    group_collected_rev = Decimal('0.00')
+                    students_info = []
+
+                    for enr in active_enrollments:
+                        st = enr.student
+                        pmts = Payment.objects.filter(
+                            student=st,
+                            month_covered=start_d,
+                            status='PAID'
+                        ).order_by('-payment_date')
+                        st_paid_total = pmts.aggregate(tot=Sum('amount'))['tot'] or Decimal('0.00')
+                        req_total = calculate_student_monthly_total(st)
+
+                        is_paid = (req_total > 0 and st_paid_total >= req_total) or (req_total == 0 and st_paid_total > 0)
+                        is_partial = (req_total > 0 and 0 < st_paid_total < req_total)
+
+                        pct = teacher.payment_percentage if teacher.payment_percentage is not None else Decimal('50.00')
+                        if is_paid:
+                            group_paid_count += 1
+                            group_collected_rev += monthly_fee
+                            st_share = (monthly_fee * pct / Decimal('100.00')).quantize(Decimal('0.01'))
+                        elif is_partial:
+                            group_paid_count += 1
+                            ratio = min(st_paid_total / req_total, Decimal('1.00'))
+                            effective_rev = (monthly_fee * ratio).quantize(Decimal('0.01'))
+                            group_collected_rev += effective_rev
+                            st_share = (effective_rev * pct / Decimal('100.00')).quantize(Decimal('0.01'))
+                        else:
+                            st_share = Decimal('0.00')
+
+                        latest_p = pmts.first()
+                        students_info.append({
+                            'student': st,
+                            'fee': monthly_fee,
+                            'paid_amount': st_paid_total,
+                            'status': 'PAID' if is_paid else ('PARTIAL' if is_partial else 'UNPAID'),
+                            'payment_date': latest_p.payment_date if latest_p else None,
+                            'payment_method': latest_p.get_payment_method_display() if latest_p else None,
+                            'teacher_share': st_share,
+                        })
+
+                    group_unpaid_count = max(0, st_count - group_paid_count)
+                    group_rec_pct = round((group_paid_count / st_count * 100), 1) if st_count > 0 else 0.0
+
+                    cb['students_info'] = students_info
+                    cb['paid_count'] = group_paid_count
+                    cb['unpaid_count'] = group_unpaid_count
+                    cb['recovery_pct'] = group_rec_pct
+                    cb['monthly_fee'] = monthly_fee
+                    cb['collected_revenue'] = group_collected_rev
+
+                    total_active_students += st_count
+                    total_paid_students += group_paid_count
+                    total_unpaid_students += group_unpaid_count
+                    total_group_revenue += group_collected_rev
+
+                global_recovery_rate = round((total_paid_students / total_active_students * 100), 1) if total_active_students > 0 else 0.0
+                payroll_data['total_active_students'] = total_active_students
+                payroll_data['total_paid_students'] = total_paid_students
+                payroll_data['total_unpaid_students'] = total_unpaid_students
+                payroll_data['global_recovery_rate'] = global_recovery_rate
+                payroll_data['total_group_revenue'] = total_group_revenue
+
+            elif teacher.payment_method == 'HOURLY':
+                hourly_rate = teacher.hourly_rate or Decimal('0.00')
+                hourly_groups = []
+                for course in teacher.coursegroup_set.filter(is_active=True).prefetch_related('levels'):
+                    group_sessions = [s for s in sessions if s.group_id == course.id]
+                    h_taught = sum(Decimal(str(s.duration_hours())) for s in group_sessions)
+                    subtotal = (h_taught * hourly_rate).quantize(Decimal('0.01'))
+                    hourly_groups.append({
+                        'group': course,
+                        'sessions_count': len(group_sessions),
+                        'hours_taught': h_taught,
+                        'rate': hourly_rate,
+                        'subtotal': subtotal
+                    })
+
+                for item in sessions_list:
+                    h = Decimal(str(item['hours']))
+                    item['rate'] = hourly_rate
+                    item['subtotal'] = (h * hourly_rate).quantize(Decimal('0.01'))
+
+                payroll_data['hourly_rate'] = hourly_rate
+                payroll_data['hourly_groups'] = hourly_groups
+
+            elif teacher.payment_method == 'SESSION':
+                session_rate = teacher.session_rate or Decimal('0.00')
+                for item in sessions_list:
+                    item['rate'] = session_rate
+                    item['subtotal'] = session_rate
+                payroll_data['session_rate'] = session_rate
 
             # Logged payments for this month
             logged_payments = TeacherPayment.objects.filter(
@@ -6650,6 +6756,7 @@ def payroll_calculator_data_ajax(request):
         # Students payment status in this month for this group
         paid_st_count = 0
         collected_rev = Decimal('0.00')
+        students_list = []
 
         for enr in active_enrollments:
             st = enr.student
@@ -6657,20 +6764,36 @@ def payroll_calculator_data_ajax(request):
                 student=st,
                 month_covered=target_month,
                 status='PAID'
-            )
+            ).order_by('-payment_date')
             st_paid = pmts.aggregate(total=Sum('amount'))['total'] or Decimal('0.00')
             from .utils import calculate_student_monthly_total
             req = calculate_student_monthly_total(st)
-            if req > 0 and st_paid >= req:
+            is_paid = (req > 0 and st_paid >= req) or (req == 0 and st_paid > 0)
+            is_partial = (req > 0 and 0 < st_paid < req)
+            if is_paid:
                 paid_st_count += 1
                 collected_rev += monthly_price
-            elif req > 0 and st_paid > 0:
+            elif is_partial:
                 ratio = min(st_paid / req, Decimal('1.00'))
                 collected_rev += (monthly_price * ratio).quantize(Decimal('0.01'))
                 paid_st_count += 1
             elif req == 0 and st_paid > 0:
                 paid_st_count += 1
                 collected_rev += monthly_price
+
+            latest_p = pmts.first()
+            students_list.append({
+                'id': st.id,
+                'name': st.name,
+                'student_id': st.student_id or '',
+                'monthly_fee': float(monthly_price),
+                'paid_amount': float(st_paid),
+                'is_paid': is_paid,
+                'is_partial': is_partial,
+                'status': 'PAID' if is_paid else ('PARTIAL' if is_partial else 'UNPAID'),
+                'payment_date': latest_p.payment_date.strftime('%d/%m/%Y') if latest_p and latest_p.payment_date else None,
+                'payment_method': latest_p.get_payment_method_display() if latest_p else None,
+            })
 
         unpaid_st_count = max(0, st_count - paid_st_count)
         paid_pct = round((paid_st_count / st_count * 100), 1) if st_count > 0 else 0.0
@@ -6705,6 +6828,7 @@ def payroll_calculator_data_ajax(request):
             'hours_taught': float(hours),
             'teacher_percentage': float(teacher_pct),
             'hourly_rate': float(teacher_rate),
+            'students': students_list,
         })
 
         total_students += st_count

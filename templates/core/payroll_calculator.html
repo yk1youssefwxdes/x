@@ -294,33 +294,60 @@
         <h5 class="mb-0 fw-bold">Détail des Groupes & Part des Gains</h5>
         <span class="badge bg-primary-subtle text-primary border border-primary-subtle" id="tableRowCountBadge">0 groupe(s)</span>
       </div>
-      <div class="d-flex align-items-center gap-2">
-        <!-- Quick simulation buttons -->
+      <div class="d-flex align-items-center gap-2 flex-wrap">
+        <!-- Quick simulation & client-side override buttons -->
+        <button type="button" class="btn btn-outline-warning btn-sm" onclick="resetToDbData()" title="Réinitialiser toutes les modifications manuelles et restaurer les chiffres exacts de la base">
+          <i class="bi bi-arrow-counterclockwise me-1"></i> Données BDD initiales
+        </button>
         <button type="button" class="btn btn-outline-secondary btn-sm" onclick="simulateFullPayment()" title="Simuler comme si tous les élèves avaient payé">
           <i class="bi bi-magic me-1"></i> Simuler 100% payé
         </button>
         <button type="button" class="btn btn-outline-primary btn-sm" onclick="addCustomRow()">
           <i class="bi bi-plus-lg me-1"></i> Ajouter une ligne libre
         </button>
-        <button type="button" class="btn btn-outline-danger btn-sm" onclick="reloadGroupData()" title="Réinitialiser les chiffres réels de la base">
-          <i class="bi bi-arrow-counterclockwise"></i>
-        </button>
       </div>
     </div>
+
+    <!-- Global Percentage Quick-Override Bar -->
+    <div class="p-3 bg-light border-bottom d-flex flex-wrap align-items-center justify-content-between gap-3">
+      <div class="d-flex align-items-center gap-2 flex-wrap">
+        <label for="globalTeacherPct" class="fw-bold small text-dark mb-0">
+          <i class="bi bi-percent text-primary me-1"></i>Part Professeur Globale :
+        </label>
+        <div class="input-group input-group-sm" style="width: 135px;">
+          <input type="number" id="globalTeacherPct" class="form-control text-center fw-bold" value="50" step="0.5" min="0" max="100">
+          <span class="input-group-text fw-bold">%</span>
+        </div>
+        <button type="button" class="btn btn-sm btn-primary fw-semibold" onclick="applyGlobalPercentage()">
+          <i class="bi bi-check2-all me-1"></i>Appliquer à tous
+        </button>
+        <div class="btn-group btn-group-sm ms-md-2" role="group">
+          <button type="button" class="btn btn-outline-secondary" onclick="quickSetPct(30)">30%</button>
+          <button type="button" class="btn btn-outline-secondary" onclick="quickSetPct(40)">40%</button>
+          <button type="button" class="btn btn-outline-secondary" onclick="quickSetPct(50)">50%</button>
+          <button type="button" class="btn btn-outline-secondary" onclick="quickSetPct(60)">60%</button>
+          <button type="button" class="btn btn-outline-secondary" onclick="quickSetPct(70)">70%</button>
+        </div>
+      </div>
+      <div class="text-muted small">
+        <i class="bi bi-pencil-square text-info me-1"></i>Toutes les valeurs (pourcentages, effectifs, prix, recettes) sont 100% modifiables en direct.
+      </div>
+    </div>
+
     <div class="table-responsive">
       <table class="table table-hover align-middle mb-0 calc-table">
         <thead>
           <tr>
-            <th style="min-width: 180px;">Groupe / Matière</th>
-            <th style="min-width: 100px;">Niveau(x)</th>
-            <th style="width: 100px;" class="text-center">Élèves</th>
-            <th style="width: 100px;" class="text-center">Payés</th>
-            <th style="width: 100px;" class="text-center">Impayés</th>
-            <th style="min-width: 140px;">Statut Paiement</th>
-            <th style="width: 110px;" class="text-end">Tarif/m</th>
-            <th style="width: 130px;" class="text-end">Recettes (DH)</th>
+            <th style="min-width: 190px;">Groupe / Matière</th>
+            <th style="min-width: 90px;">Niveau(x)</th>
+            <th style="width: 95px;" class="text-center">Élèves</th>
+            <th style="width: 95px;" class="text-center">Payés</th>
+            <th style="width: 95px;" class="text-center">Impayés</th>
+            <th style="min-width: 130px;">Statut Recouvrement</th>
+            <th style="width: 105px;" class="text-end">Tarif/m</th>
+            <th style="width: 125px;" class="text-end">Recettes (DH)</th>
             <th style="width: 100px;" class="text-center">Part Prof (%)</th>
-            <th style="width: 130px;" class="text-end">Montant Dû</th>
+            <th style="width: 125px;" class="text-end">Montant Dû</th>
             <th style="width: 50px;"></th>
           </tr>
         </thead>
@@ -347,11 +374,41 @@
 
   <!-- ── 2. HOURLY RATE MODE ─────────────────────────────────────────── -->
   <div class="card border-0 shadow-sm rounded-3 mb-4" id="modeHourlyCard" style="display: none;">
-    <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
+    <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center flex-wrap gap-2">
       <h5 class="mb-0 fw-bold"><i class="bi bi-clock-history text-primary me-2"></i>Calcul au Taux Horaire</h5>
-      <button type="button" class="btn btn-outline-primary btn-sm" onclick="addCustomHourlyRow()">
-        <i class="bi bi-plus-lg me-1"></i> Ajouter une ligne d'heures
-      </button>
+      <div class="d-flex align-items-center gap-2">
+        <button type="button" class="btn btn-outline-warning btn-sm" onclick="resetToDbData()" title="Réinitialiser">
+          <i class="bi bi-arrow-counterclockwise me-1"></i> Données BDD initiales
+        </button>
+        <button type="button" class="btn btn-outline-primary btn-sm" onclick="addCustomHourlyRow()">
+          <i class="bi bi-plus-lg me-1"></i> Ajouter une ligne d'heures
+        </button>
+      </div>
+    </div>
+
+    <!-- Global Hourly Rate Quick-Override Bar -->
+    <div class="p-3 bg-light border-bottom d-flex flex-wrap align-items-center justify-content-between gap-3">
+      <div class="d-flex align-items-center gap-2 flex-wrap">
+        <label for="globalHourlyRate" class="fw-bold small text-dark mb-0">
+          <i class="bi bi-clock-history text-primary me-1"></i>Taux Horaire Global :
+        </label>
+        <div class="input-group input-group-sm" style="width: 140px;">
+          <input type="number" id="globalHourlyRate" class="form-control text-end fw-bold" value="100" step="5" min="0">
+          <span class="input-group-text fw-bold">DH/h</span>
+        </div>
+        <button type="button" class="btn btn-sm btn-primary fw-semibold" onclick="applyGlobalHourlyRate()">
+          <i class="bi bi-check2-all me-1"></i>Appliquer à tous
+        </button>
+        <div class="btn-group btn-group-sm ms-md-2" role="group">
+          <button type="button" class="btn btn-outline-secondary" onclick="quickSetHourly(80)">80 DH</button>
+          <button type="button" class="btn btn-outline-secondary" onclick="quickSetHourly(100)">100 DH</button>
+          <button type="button" class="btn btn-outline-secondary" onclick="quickSetHourly(120)">120 DH</button>
+          <button type="button" class="btn btn-outline-secondary" onclick="quickSetHourly(150)">150 DH</button>
+        </div>
+      </div>
+      <div class="text-muted small">
+        <i class="bi bi-pencil-square text-info me-1"></i>Heures prévues, heures réelles et taux modifiables en direct ci-dessous.
+      </div>
     </div>
     <div class="table-responsive">
       <table class="table table-hover align-middle mb-0 calc-table">
@@ -501,6 +558,7 @@
 // State management
 let currentMode = 'PERCENTAGE'; // 'PERCENTAGE', 'HOURLY', 'FIXED'
 let groupsData = [];
+let dbGroupsData = []; // Cached initial DB data for 1-click restore
 let customRowCounter = 1;
 
 function switchMode(mode) {
@@ -598,11 +656,109 @@ async function reloadGroupData() {
     const res = await fetch(`{% url 'core:payroll_calculator_data_ajax' %}?${params.toString()}`);
     const data = await res.json();
     groupsData = data.groups || [];
+    dbGroupsData = JSON.parse(JSON.stringify(groupsData));
+
+    if (data.teacher && data.teacher.payment_percentage != null) {
+      const gPct = document.getElementById('globalTeacherPct');
+      if (gPct) gPct.value = data.teacher.payment_percentage;
+    }
+    if (data.teacher && data.teacher.hourly_rate != null) {
+      const gRate = document.getElementById('globalHourlyRate');
+      if (gRate) gRate.value = data.teacher.hourly_rate;
+    }
+
     renderTables();
     recalculateAll();
   } catch (e) {
     console.error("Error loading group data:", e);
   }
+}
+
+function resetToDbData() {
+  if (dbGroupsData && dbGroupsData.length > 0) {
+    groupsData = JSON.parse(JSON.stringify(dbGroupsData));
+    renderTables();
+    recalculateAll();
+  } else {
+    reloadGroupData();
+  }
+}
+
+function applyGlobalPercentage() {
+  const pct = parseFloat(document.getElementById('globalTeacherPct').value) || 0;
+  groupsData.forEach((g, idx) => {
+    g.teacher_percentage = pct;
+    const row = document.getElementById(`pctRow_${idx}`);
+    if (row) {
+      const input = row.querySelector('.row-teacher-pct');
+      if (input) input.value = pct;
+    }
+  });
+  recalculateAll();
+}
+
+function quickSetPct(val) {
+  const el = document.getElementById('globalTeacherPct');
+  if (el) el.value = val;
+  applyGlobalPercentage();
+}
+
+function applyGlobalHourlyRate() {
+  const rate = parseFloat(document.getElementById('globalHourlyRate').value) || 0;
+  groupsData.forEach((g, idx) => {
+    g.hourly_rate = rate;
+    const row = document.getElementById(`hourlyRow_${idx}`);
+    if (row) {
+      const input = row.querySelector('.row-hourly-rate');
+      if (input) input.value = rate;
+    }
+  });
+  recalculateHourly();
+}
+
+function quickSetHourly(val) {
+  const el = document.getElementById('globalHourlyRate');
+  if (el) el.value = val;
+  applyGlobalHourlyRate();
+}
+
+function onGroupNameChange(idx, val) {
+  if (groupsData[idx]) groupsData[idx].name = val;
+}
+
+function onGroupSubjectChange(idx, val) {
+  if (groupsData[idx]) groupsData[idx].subject = val;
+}
+
+function toggleStudentDrawer(idx) {
+  const drawer = document.getElementById(`studentDrawer_${idx}`);
+  const chevron = document.getElementById(`drawerChevron_${idx}`);
+  if (!drawer) return;
+  const isHidden = drawer.style.display === 'none';
+  drawer.style.display = isHidden ? '' : 'none';
+  if (chevron) {
+    chevron.className = isHidden ? 'bi bi-chevron-up small' : 'bi bi-chevron-down small';
+  }
+}
+
+function onStudentCheckToggle(idx) {
+  const chks = document.querySelectorAll(`.student-chk-${idx}`);
+  const checked = document.querySelectorAll(`.student-chk-${idx}:checked`).length;
+  const row = document.getElementById(`pctRow_${idx}`);
+  if (!row) return;
+
+  const paidInput = row.querySelector('.row-paid');
+  if (paidInput) {
+    paidInput.value = checked;
+    if (groupsData[idx]) groupsData[idx].paid_count = checked;
+    onRowInputChange(idx, false);
+  }
+}
+
+function toggleAllStudentsInGroup(idx, checkAll) {
+  const chks = document.querySelectorAll(`.student-chk-${idx}`);
+  chks.forEach(c => c.checked = checkAll);
+  onStudentCheckToggle(idx);
 }
 
 function renderTables() {
@@ -624,20 +780,25 @@ function renderTables() {
         ? g.levels.map(l => `<span class="badge-level me-1">${l}</span>`).join('')
         : `<span class="text-muted small">Standard</span>`;
 
+      const stList = g.students || [];
+
       tr.innerHTML = `
         <td>
-          <div class="fw-bold">${g.name}</div>
-          <small class="text-muted">${g.subject}</small>
+          <input type="text" class="calc-input fw-bold row-name mb-1" value="${g.name}" oninput="onGroupNameChange(${idx}, this.value)" style="font-size:13.5px; padding: 4px 8px;">
+          <input type="text" class="calc-input row-subject small text-muted py-0 mb-1" value="${g.subject}" oninput="onGroupSubjectChange(${idx}, this.value)" style="font-size:11.5px; height:22px; padding: 2px 6px;">
+          <button type="button" class="btn btn-link btn-xs p-0 text-decoration-none text-primary small d-inline-flex align-items-center gap-1" onclick="toggleStudentDrawer(${idx})" id="drawerBtn_${idx}">
+            <i class="bi bi-people-fill"></i> <span>Élèves (${stList.length || g.student_count})</span> <i class="bi bi-chevron-down small" id="drawerChevron_${idx}"></i>
+          </button>
         </td>
         <td>${levelsBadges}</td>
         <td>
-          <input type="number" min="0" class="calc-input text-center row-students" value="${g.student_count}" oninput="onRowInputChange(${idx})">
+          <input type="number" min="0" class="calc-input text-center row-students" value="${g.student_count}" oninput="onRowInputChange(${idx}, false)">
         </td>
         <td>
-          <input type="number" min="0" class="calc-input text-center text-success row-paid" value="${g.paid_count}" oninput="onRowInputChange(${idx})">
+          <input type="number" min="0" class="calc-input text-center text-success fw-bold row-paid" value="${g.paid_count}" oninput="onRowInputChange(${idx}, false)">
         </td>
         <td>
-          <input type="number" min="0" class="calc-input text-center text-danger row-unpaid" value="${g.unpaid_count}" readonly tabindex="-1" style="background:#f8fafc;">
+          <input type="number" min="0" class="calc-input text-center text-danger fw-bold row-unpaid" value="${g.unpaid_count}" oninput="onRowUnpaidChange(${idx})">
         </td>
         <td>
           <div class="d-flex justify-content-between small mb-1">
@@ -649,24 +810,73 @@ function renderTables() {
           </div>
         </td>
         <td class="text-end">
-          <input type="number" step="0.01" class="calc-input text-end row-price" value="${g.monthly_price}" oninput="onRowInputChange(${idx})">
+          <input type="number" step="0.01" class="calc-input text-end row-price" value="${g.monthly_price}" oninput="onRowInputChange(${idx}, false)">
         </td>
         <td class="text-end">
           <input type="number" step="0.01" class="calc-input text-end fw-bold row-rev" value="${g.collected_revenue}" oninput="onRowRevChange(${idx})">
         </td>
         <td class="text-center">
-          <div class="input-group input-group-sm">
-            <input type="number" step="0.5" class="calc-input text-center row-teacher-pct" value="${g.teacher_percentage}" oninput="onRowInputChange(${idx})">
-          </div>
+          <input type="number" step="0.5" class="calc-input text-center fw-bold row-teacher-pct" value="${g.teacher_percentage}" oninput="onRowInputChange(${idx}, false)">
         </td>
         <td class="text-end fw-bold text-success fs-6 row-owed">
           0.00 DH
         </td>
         <td class="text-center">
-          <button type="button" class="btn btn-sm btn-link text-danger p-0" onclick="removeRow(${idx})"><i class="bi bi-x-circle"></i></button>
+          <button type="button" class="btn btn-sm btn-link text-danger p-0" onclick="removeRow(${idx})"><i class="bi bi-x-circle fs-5"></i></button>
         </td>
       `;
       tbody.appendChild(tr);
+
+      // Collapsible Student Drawer Row
+      const drawerTr = document.createElement('tr');
+      drawerTr.id = `studentDrawer_${idx}`;
+      drawerTr.style.display = 'none';
+      drawerTr.className = 'bg-light-subtle';
+
+      let studentsHtml = '';
+      if (stList.length > 0) {
+        studentsHtml = `
+          <div class="p-3 bg-white border rounded shadow-2xs">
+            <div class="d-flex justify-content-between align-items-center mb-2 flex-wrap gap-2">
+              <span class="fw-bold small text-dark"><i class="bi bi-person-lines-fill text-primary me-1"></i> Élèves inscrits dans <strong>${g.name}</strong> (${stList.length})</span>
+              <div class="small">
+                <a href="javascript:void(0)" onclick="toggleAllStudentsInGroup(${idx}, true)" class="text-decoration-none me-2 fw-semibold">Tout cocher (Payés)</a>
+                <a href="javascript:void(0)" onclick="toggleAllStudentsInGroup(${idx}, false)" class="text-decoration-none text-muted">Tout décocher (Impayés)</a>
+              </div>
+            </div>
+            <div class="row g-2" style="max-height: 220px; overflow-y: auto;">
+              ${stList.map((st, sIdx) => `
+                <div class="col-12 col-md-6 col-lg-4">
+                  <div class="p-2 border rounded d-flex align-items-center justify-content-between bg-light small">
+                    <div class="form-check mb-0">
+                      <input class="form-check-input student-chk-${idx}" type="checkbox" id="stchk_${idx}_${sIdx}" ${st.is_paid ? 'checked' : ''} onchange="onStudentCheckToggle(${idx})">
+                      <label class="form-check-label fw-semibold text-dark cursor-pointer" for="stchk_${idx}_${sIdx}">
+                        ${st.name}
+                      </label>
+                      <small class="text-muted d-block" style="font-size:11px;">ID: ${st.student_id || '—'}</small>
+                    </div>
+                    <div class="text-end ms-2">
+                      <span class="badge ${st.is_paid ? 'bg-success-subtle text-success' : (st.is_partial ? 'bg-warning-subtle text-warning-emphasis' : 'bg-danger-subtle text-danger')} border" style="font-size:10.5px;">
+                        ${st.is_paid ? 'Réglé' : (st.is_partial ? 'Partiel' : 'Impayé')}
+                      </span>
+                      <small class="text-muted d-block fw-bold">${st.paid_amount || 0} / ${st.monthly_fee || g.monthly_price} DH</small>
+                    </div>
+                  </div>
+                </div>
+              `).join('')}
+            </div>
+          </div>
+        `;
+      } else {
+        studentsHtml = `
+          <div class="p-2 text-center text-muted small">
+            Aucun élève chargé pour ce groupe ou groupe personnalisé.
+          </div>
+        `;
+      }
+
+      drawerTr.innerHTML = `<td colspan="11" class="p-3">${studentsHtml}</td>`;
+      tbody.appendChild(drawerTr);
     });
   }
 
@@ -680,17 +890,22 @@ function renderTables() {
       const tr = document.createElement('tr');
       tr.id = `hourlyRow_${idx}`;
       tr.innerHTML = `
-        <td><strong>${g.name}</strong> (${g.subject})</td>
-        <td class="text-center"><span class="badge bg-light text-dark">${g.hours_taught || 0} h</span></td>
+        <td>
+          <input type="text" class="calc-input fw-bold mb-1" value="${g.name}" oninput="onGroupNameChange(${idx}, this.value)" style="font-size:13.5px; padding: 4px 8px;">
+          <input type="text" class="calc-input small text-muted py-0" value="${g.subject}" oninput="onGroupSubjectChange(${idx}, this.value)" style="font-size:11.5px; height:22px; padding: 2px 6px;">
+        </td>
         <td class="text-center">
-          <input type="number" step="0.5" min="0" class="calc-input text-center row-hourly-taught" value="${g.hours_taught || 0}" oninput="recalculateHourly()">
+          <input type="number" step="0.5" min="0" class="calc-input text-center row-hourly-scheduled" value="${g.hours_scheduled || g.hours_taught || 0}" oninput="recalculateHourly()">
+        </td>
+        <td class="text-center">
+          <input type="number" step="0.5" min="0" class="calc-input text-center fw-bold text-primary row-hourly-taught" value="${g.hours_taught || 0}" oninput="recalculateHourly()">
         </td>
         <td class="text-end">
-          <input type="number" step="1" class="calc-input text-end row-hourly-rate" value="${g.hourly_rate || 100}" oninput="recalculateHourly()">
+          <input type="number" step="1" min="0" class="calc-input text-end fw-bold row-hourly-rate" value="${g.hourly_rate || 100}" oninput="recalculateHourly()">
         </td>
         <td class="text-end fw-bold text-success fs-6 row-hourly-owed">0.00 DH</td>
         <td class="text-center">
-          <button type="button" class="btn btn-sm btn-link text-danger p-0" onclick="removeHourlyRow(${idx})"><i class="bi bi-x-circle"></i></button>
+          <button type="button" class="btn btn-sm btn-link text-danger p-0" onclick="removeHourlyRow(${idx})"><i class="bi bi-x-circle fs-5"></i></button>
         </td>
       `;
       hourlyTbody.appendChild(tr);
@@ -700,7 +915,7 @@ function renderTables() {
   document.getElementById('tableRowCountBadge').textContent = `${groupsData.length} groupe(s)`;
 }
 
-function onRowInputChange(idx) {
+function onRowInputChange(idx, fromUnpaid = false) {
   const row = document.getElementById(`pctRow_${idx}`);
   if (!row) return;
 
@@ -708,8 +923,10 @@ function onRowInputChange(idx) {
   let paidSt = parseFloat(row.querySelector('.row-paid').value) || 0;
   if (paidSt > totalSt) paidSt = totalSt;
 
-  const unpaidSt = Math.max(0, totalSt - paidSt);
-  row.querySelector('.row-unpaid').value = unpaidSt;
+  if (!fromUnpaid) {
+    const unpaidSt = Math.max(0, totalSt - paidSt);
+    row.querySelector('.row-unpaid').value = unpaidSt;
+  }
 
   const paidPct = totalSt > 0 ? ((paidSt / totalSt) * 100).toFixed(1) : 0;
   const unpaidPct = totalSt > 0 ? (100 - paidPct).toFixed(1) : 0;
@@ -725,9 +942,27 @@ function onRowInputChange(idx) {
   recalculateAll();
 }
 
+function onRowUnpaidChange(idx) {
+  const row = document.getElementById(`pctRow_${idx}`);
+  if (!row) return;
+
+  const totalSt = parseFloat(row.querySelector('.row-students').value) || 0;
+  const unpaidSt = parseFloat(row.querySelector('.row-unpaid').value) || 0;
+  const paidSt = Math.max(0, totalSt - unpaidSt);
+
+  row.querySelector('.row-paid').value = paidSt;
+  onRowInputChange(idx, true);
+}
+
 function onRowRevChange(idx) {
-  // Directly edited revenue
-  recalculateAll();
+  // Directly edited revenue: update owed and recalculate
+  const row = document.getElementById(`pctRow_${idx}`);
+  if (!row) return;
+  const rev = parseFloat(row.querySelector('.row-rev').value) || 0;
+  const teacherPct = parseFloat(row.querySelector('.row-teacher-pct').value) || 0;
+  const owed = rev * (teacherPct / 100);
+  row.querySelector('.row-owed').textContent = `${owed.toFixed(2)} DH`;
+  recalculatePercentage();
 }
 
 function addCustomRow() {
@@ -747,6 +982,7 @@ function addCustomRow() {
     hours_taught: 4.0,
     teacher_percentage: 50.0,
     hourly_rate: 100.0,
+    students: [],
   };
   groupsData.push(customObj);
   renderTables();
@@ -768,6 +1004,7 @@ function addCustomHourlyRow() {
     collected_revenue: 0,
     potential_revenue: 0,
     hours_taught: 5.0,
+    hours_scheduled: 5.0,
     teacher_percentage: 50.0,
     hourly_rate: 120.0,
   };
@@ -795,7 +1032,7 @@ function simulateFullPayment() {
     if (stInput && paidInput) {
       paidInput.value = stInput.value;
       const idx = row.dataset.idx;
-      onRowInputChange(idx);
+      onRowInputChange(idx, false);
     }
   });
 }
