@@ -215,17 +215,19 @@
                     <!-- Group KPI summary pills -->
                     <div class="d-flex flex-wrap align-items-center gap-3 small">
                       <div class="text-muted">
-                        Tarif : <strong>{{ cb.monthly_fee|floatformat:0 }} DH</strong>/m
+                        Tarif : <strong>{% if cb.monthly_fee %}{{ cb.monthly_fee|floatformat:0 }}{% else %}{{ cb.course.monthly_price|floatformat:0 }}{% endif %} DH</strong>/m
                       </div>
                       <div class="text-muted">
                         Élèves : <strong>{{ cb.student_count }}</strong>
-                        (<span class="text-success fw-bold">{{ cb.paid_count }} payé{{ cb.paid_count|pluralize }}</span>, <span class="text-danger fw-bold">{{ cb.unpaid_count }} impayé{{ cb.unpaid_count|pluralize }}</span>)
+                        {% if cb.paid_count %}
+                          (<span class="text-success fw-bold">{{ cb.paid_count }} payé{{ cb.paid_count|pluralize }}</span>, <span class="text-danger fw-bold">{{ cb.unpaid_count }} impayé{{ cb.unpaid_count|pluralize }}</span>)
+                        {% endif %}
                       </div>
                       <div>
-                        Taux : <span class="badge {% if cb.recovery_pct >= 80 %}bg-success{% elif cb.recovery_pct >= 50 %}bg-warning text-dark{% else %}bg-danger{% endif %}">{{ cb.recovery_pct }}%</span>
+                        Taux : <span class="badge {% if cb.recovery_pct >= 80 %}bg-success{% elif cb.recovery_pct >= 50 %}bg-warning text-dark{% else %}bg-danger{% endif %}">{% if cb.recovery_pct %}{{ cb.recovery_pct }}{% else %}0{% endif %}%</span>
                       </div>
                       <div>
-                        Recettes : <strong class="text-dark">{{ cb.collected_revenue|floatformat:2 }} DH</strong>
+                        Recettes : <strong class="text-dark">{% if cb.collected_revenue %}{{ cb.collected_revenue|floatformat:2 }}{% else %}{{ cb.gains_actual|floatformat:2 }}{% endif %} DH</strong>
                       </div>
                       <div class="bg-success-subtle text-success px-2 py-1 rounded fw-bold border border-success-subtle">
                         Part Prof : {{ cb.share_actual|floatformat:2 }} DH
@@ -257,11 +259,11 @@
                                 <tr>
                                   <td class="text-center text-muted">{{ forloop.counter }}</td>
                                   <td>
-                                    <a href="{% url 'core:student_detail' st_item.student.id %}" class="fw-bold text-decoration-none text-dark">
+                                    <a href="{% url 'core:student_page' st_item.student.id %}" class="fw-bold text-decoration-none text-dark">
                                       {{ st_item.student.name }}
                                     </a>
                                   </td>
-                                  <td><span class="text-muted">{{ st_item.student.student_id|default:"—" }}</span></td>
+                                  <td><span class="text-muted">{{ st_item.student.matricule|default:"—" }}</span></td>
                                   <td><small class="text-muted">{{ st_item.student.phone|default:"—" }}</small></td>
                                   <td class="text-end">{{ st_item.fee|floatformat:0 }} DH</td>
                                   <td class="text-end fw-bold {% if st_item.status == 'PAID' %}text-success{% elif st_item.status == 'PARTIAL' %}text-warning-emphasis{% else %}text-danger{% endif %}">
@@ -290,9 +292,59 @@
                             <tfoot class="table-light fw-bold">
                               <tr>
                                 <td colspan="4">Sous-total {{ cb.course.name }}</td>
-                                <td class="text-end">{{ cb.gains_theoretical|floatformat:0 }} DH</td>
-                                <td class="text-end text-success">{{ cb.collected_revenue|floatformat:2 }} DH</td>
-                                <td class="text-center">{{ cb.recovery_pct }}%</td>
+                                <td class="text-end">{% if cb.gains_theoretical %}{{ cb.gains_theoretical|floatformat:0 }}{% else %}{{ cb.course.monthly_price|floatformat:0 }}{% endif %} DH</td>
+                                <td class="text-end text-success">{% if cb.collected_revenue %}{{ cb.collected_revenue|floatformat:2 }}{% else %}{{ cb.gains_actual|floatformat:2 }}{% endif %} DH</td>
+                                <td class="text-center">{% if cb.recovery_pct %}{{ cb.recovery_pct }}{% else %}0{% endif %}%</td>
+                                <td></td>
+                                <td class="text-end text-success fs-6">{{ cb.share_actual|floatformat:2 }} DH</td>
+                              </tr>
+                            </tfoot>
+                          </table>
+                        </div>
+                      {% elif cb.course.enrollment_set.all %}
+                        <!-- Direct fallback to course enrollments if students_info not available -->
+                        <div class="table-responsive">
+                          <table class="table table-hover align-middle mb-0 small">
+                            <thead class="table-light">
+                              <tr>
+                                <th style="width: 40px;" class="text-center">#</th>
+                                <th>Élève</th>
+                                <th>Code</th>
+                                <th>Téléphone</th>
+                                <th class="text-end">Tarif Mensuel</th>
+                                <th class="text-center">Statut Inscription</th>
+                                <th class="text-end text-muted">Groupe</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {% for enr in cb.course.enrollment_set.all %}
+                                {% if enr.student.is_active %}
+                                  <tr>
+                                    <td class="text-center text-muted">{{ forloop.counter }}</td>
+                                    <td>
+                                      <a href="{% url 'core:student_page' enr.student.id %}" class="fw-bold text-decoration-none text-dark">
+                                        {{ enr.student.name }}
+                                      </a>
+                                    </td>
+                                    <td><span class="text-muted">{{ enr.student.matricule|default:"—" }}</span></td>
+                                    <td><small class="text-muted">{{ enr.student.phone|default:"—" }}</small></td>
+                                    <td class="text-end">{{ cb.course.monthly_price|floatformat:0 }} DH</td>
+                                    <td class="text-center">
+                                      {% if enr.is_active %}
+                                        <span class="badge bg-success-subtle text-success border border-success-subtle">Actif</span>
+                                      {% else %}
+                                        <span class="badge bg-secondary-subtle text-muted">Inactif</span>
+                                      {% endif %}
+                                    </td>
+                                    <td class="text-end text-muted">{{ cb.course.name }}</td>
+                                  </tr>
+                                {% endif %}
+                              {% endfor %}
+                            </tbody>
+                            <tfoot class="table-light fw-bold">
+                              <tr>
+                                <td colspan="4">Sous-total {{ cb.course.name }}</td>
+                                <td class="text-end">{{ cb.course.monthly_price|floatformat:0 }} DH</td>
                                 <td></td>
                                 <td class="text-end text-success fs-6">{{ cb.share_actual|floatformat:2 }} DH</td>
                               </tr>

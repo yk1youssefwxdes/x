@@ -1070,6 +1070,97 @@ class SimplifiedWorkflowsTestCase(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.context['result']['total_paid'], Decimal('1500.00'))
 
+    def test_teacher_payroll_detailed_method_info_and_calculator_ajax(self):
+        today = timezone.now().date()
+        first_of_month = today.replace(day=1)
+        month_str = f"{today.year}-{today.month:02d}"
+
+        # 1. Enroll student in group
+        Enrollment.objects.create(student=self.student, course_group=self.group, is_active=True)
+
+        # 2. Record student payment for this month
+        Payment.objects.create(
+            student=self.student,
+            amount=Decimal("400.00"),
+            payment_date=today,
+            month_covered=first_of_month,
+            payment_method="CASH",
+            status="PAID"
+        )
+
+        # 3. Test teacher_payroll with PERCENTAGE
+        response = self.client.post(reverse('core:teacher_payroll'), {
+            'action': 'calculate',
+            'teacher_id': self.teacher.id,
+            'month': month_str
+        })
+        self.assertEqual(response.status_code, 200)
+        result = response.context['result']
+        self.assertIsNotNone(result)
+        self.assertEqual(result['teacher'].payment_method, 'PERCENTAGE')
+        self.assertGreaterEqual(result['total_active_students'], 1)
+        self.assertEqual(result['total_paid_students'], 1)
+        self.assertEqual(result['global_recovery_rate'], 100.0)
+        
+        # Verify student details attached to courses_breakdown
+        cb = result['courses_breakdown'][0]
+        self.assertIn('students_info', cb)
+        self.assertEqual(len(cb['students_info']), 1)
+        st_info = cb['students_info'][0]
+        self.assertEqual(st_info['student'], self.student)
+        self.assertEqual(st_info['status'], 'PAID')
+        self.assertEqual(st_info['teacher_share'], Decimal('200.00')) # 50% of 400
+
+        # 4. Test teacher_payroll with HOURLY
+        self.teacher.payment_method = 'HOURLY'
+        self.teacher.hourly_rate = Decimal('120.00')
+        self.teacher.save()
+
+        # Create session
+        Session.objects.create(
+            group=self.group,
+            room=self.room,
+            date=today,
+            start_time=time(10, 0),
+            end_time=time(12, 0),
+            status='DONE'
+        )
+
+        response = self.client.post(reverse('core:teacher_payroll'), {
+            'action': 'calculate',
+            'teacher_id': self.teacher.id,
+            'month': month_str
+        })
+        self.assertEqual(response.status_code, 200)
+        res_hourly = response.context['result']
+        self.assertEqual(res_hourly['hourly_rate'], Decimal('120.00'))
+        self.assertIn('hourly_groups', res_hourly)
+        self.assertGreaterEqual(len(res_hourly['hourly_groups']), 1)
+        self.assertEqual(res_hourly['sessions'][0]['subtotal'], Decimal('240.00')) # 2h * 120
+
+        # 5. Test payroll_calculator page GET
+        res_calc = self.client.get(reverse('core:payroll_calculator'))
+        self.assertEqual(res_calc.status_code, 200)
+        self.assertIn('teachers', res_calc.context)
+        self.assertIn('course_groups', res_calc.context)
+
+        # 6. Test payroll_calculator_data_ajax returns students with info
+        res_ajax = self.client.get(reverse('core:payroll_calculator_data_ajax'), {
+            'teacher_id': self.teacher.id,
+            'month': today.strftime('%Y-%m-%d'),
+            'group_ids[]': [self.group.id]
+        })
+        self.assertEqual(res_ajax.status_code, 200)
+        data = res_ajax.json()
+        self.assertIn('groups', data)
+        self.assertGreaterEqual(len(data['groups']), 1)
+        grp_item = data['groups'][0]
+        self.assertEqual(grp_item['id'], self.group.id)
+        self.assertIn('students', grp_item)
+        self.assertEqual(len(grp_item['students']), 1)
+        self.assertEqual(grp_item['students'][0]['name'], self.student.name)
+        self.assertEqual(grp_item['students'][0]['status'], 'PAID')
+
     def test_admin_reset_data(self):
         # GET page
         response = self.client.get(reverse('core:admin_reset_data'))

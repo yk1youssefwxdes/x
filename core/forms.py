@@ -250,7 +250,6 @@ class CourseGroupForm(forms.ModelForm):
     def save(self, commit=True):
         group = super().save(commit=commit)
         if commit:
-            self.save_m2m()
             first_lvl = group.levels.first()
             if first_lvl and group.level != first_lvl:
                 group.level = first_lvl

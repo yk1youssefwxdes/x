@@ -1090,7 +1090,7 @@ def teacher_payroll(request):
             elif teacher.payment_method == 'HOURLY':
                 hourly_rate = teacher.hourly_rate or Decimal('0.00')
                 hourly_groups = []
-                for course in teacher.coursegroup_set.filter(is_active=True).prefetch_related('levels'):
+                for course in teacher.course_groups.filter(is_active=True).prefetch_related('levels'):
                     group_sessions = [s for s in sessions if s.group_id == course.id]
                     h_taught = sum(Decimal(str(s.duration_hours())) for s in group_sessions)
                     subtotal = (h_taught * hourly_rate).quantize(Decimal('0.01'))
@@ -6785,7 +6785,7 @@ def payroll_calculator_data_ajax(request):
             students_list.append({
                 'id': st.id,
                 'name': st.name,
-                'student_id': st.student_id or '',
+                'student_id': getattr(st, 'matricule', '') or '',
                 'monthly_fee': float(monthly_price),
                 'paid_amount': float(st_paid),
                 'is_paid': is_paid,

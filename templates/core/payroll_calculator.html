@@ -224,6 +224,13 @@
                       <span><strong>{{ g.name }}</strong> ({{ g.subject }})</span>
                       <span class="badge bg-light text-dark ms-1">{{ g.levels_display|truncatechars:20 }}</span>
                     </label>
+                    <div class="d-none group-embedded-students" data-group-id="{{ g.id }}">
+                      {% for st in g.students.all %}
+                        {% if st.is_active %}
+                          <span class="embedded-student-item" data-id="{{ st.id }}" data-name="{{ st.name }}" data-matricule="{{ st.matricule|default:'' }}" data-fee="{{ g.monthly_price|default:0 }}"></span>
+                        {% endif %}
+                      {% endfor %}
+                    </div>
                   </div>
                 {% endfor %}
               </div>
@@ -741,11 +748,43 @@ function toggleStudentDrawer(idx) {
   }
 }
 
+function getEmbeddedStudentsForGroup(groupId) {
+  const container = document.querySelector(`.group-embedded-students[data-group-id="${groupId}"]`);
+  if (!container) return [];
+  const items = container.querySelectorAll('.embedded-student-item');
+  const students = [];
+  items.forEach(el => {
+    students.push({
+      id: parseInt(el.dataset.id),
+      name: el.dataset.name,
+      student_id: el.dataset.matricule,
+      monthly_fee: parseFloat(el.dataset.fee) || 0,
+      paid_amount: 0,
+      is_paid: false,
+      is_partial: false,
+      status: 'UNPAID',
+      payment_date: null,
+      payment_method: null,
+    });
+  });
+  return students;
+}
+
 function onStudentCheckToggle(idx) {
   const chks = document.querySelectorAll(`.student-chk-${idx}`);
   const checked = document.querySelectorAll(`.student-chk-${idx}:checked`).length;
   const row = document.getElementById(`pctRow_${idx}`);
   if (!row) return;
+
+  if (groupsData[idx] && groupsData[idx].students) {
+    chks.forEach((chk, sIdx) => {
+      if (groupsData[idx].students[sIdx]) {
+        groupsData[idx].students[sIdx].is_paid = chk.checked;
+        groupsData[idx].students[sIdx].status = chk.checked ? 'PAID' : 'UNPAID';
+        groupsData[idx].students[sIdx].paid_amount = chk.checked ? (groupsData[idx].students[sIdx].monthly_fee || groupsData[idx].monthly_price) : 0;
+      }
+    });
+  }
 
   const paidInput = row.querySelector('.row-paid');
   if (paidInput) {
@@ -780,7 +819,21 @@ function renderTables() {
         ? g.levels.map(l => `<span class="badge-level me-1">${l}</span>`).join('')
         : `<span class="text-muted small">Standard</span>`;
 
-      const stList = g.students || [];
+      let stList = (g.students && g.students.length > 0)
+        ? g.students
+        : getEmbeddedStudentsForGroup(g.id);
+
+      if ((!g.students || g.students.length === 0) && stList.length > 0) {
+        const paidCount = parseInt(g.paid_count) || 0;
+        stList.forEach((st, sIdx) => {
+          if (sIdx < paidCount) {
+            st.is_paid = true;
+            st.paid_amount = st.monthly_fee || g.monthly_price;
+            st.status = 'PAID';
+          }
+        });
+        g.students = stList;
+      }
 
       tr.innerHTML = `
         <td>

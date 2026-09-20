@@ -523,7 +523,7 @@ def calculate_teacher_hours(teacher, start_date: date, end_date: date) -> Dict:
     """
     Calcule les heures travaillées et les gains/salaires pour un professeur sur une période
     """
-    from .models import CourseGroup, Attendance, Session
+    from .models import CourseGroup, Attendance, Session, Enrollment, Payment
     from django.db.models import Q
     
     courses = CourseGroup.objects.filter(
@@ -596,9 +596,86 @@ def calculate_teacher_hours(teacher, start_date: date, end_date: date) -> Dict:
             total_share_regular += share_regular
             total_share_late += share_late
             
+            # Detailed per-student breakdown for this course group
+            group_students_info = []
+            group_paid_count = 0
+            monthly_fee = course.monthly_price or Decimal('0.00')
+
+            active_enrollments = list(Enrollment.objects.filter(
+                course_group=course,
+                is_active=True,
+                student__is_active=True
+            ).select_related('student', 'student__level'))
+
+            # Fallback if enrollment objects are not marked active but students are active
+            if not active_enrollments:
+                for st in course.students.filter(is_active=True).select_related('level'):
+                    enr, _ = Enrollment.objects.get_or_create(course_group=course, student=st)
+                    active_enrollments.append(enr)
+
+            if active_enrollments:
+                payments_qs = Payment.objects.filter(
+                    student__in=[e.student for e in active_enrollments],
+                    month_covered__in=months,
+                    status__in=PAID_STATUSES
+                ).order_by('-payment_date')
+                all_pmts = list(payments_qs)
+
+                pct = teacher.payment_percentage if teacher.payment_percentage is not None else Decimal('50.00')
+
+                for enr in active_enrollments:
+                    st = enr.student
+                    st_pmts = [p for p in all_pmts if p.student_id == st.id]
+                    st_paid = sum((p.amount for p in st_pmts), Decimal('0.00'))
+
+                    st_exp = sum(
+                        (calculate_student_expected_fees_for_month(st, m) for m in months),
+                        Decimal('0.00')
+                    )
+                    c_exp = sum(
+                        (calculate_enrollment_expected_fee(enr, m) for m in months),
+                        Decimal('0.00')
+                    )
+
+                    if st_exp > 0:
+                        st_contrib = st_paid * (c_exp / st_exp)
+                    else:
+                        st_contrib = Decimal('0.00')
+
+                    st_share = (st_contrib * pct / Decimal('100.00') * prorate_factor).quantize(Decimal('0.01'))
+
+                    is_paid = (st_exp > 0 and st_paid >= st_exp) or (st_exp == 0 and st_paid > 0)
+                    is_partial = (st_exp > 0 and 0 < st_paid < st_exp)
+
+                    if is_paid or is_partial:
+                        group_paid_count += 1
+
+                    latest_p = st_pmts[0] if st_pmts else None
+
+                    group_students_info.append({
+                        'student': st,
+                        'fee': c_exp if c_exp > 0 else monthly_fee,
+                        'paid_amount': st_paid,
+                        'status': 'PAID' if is_paid else ('PARTIAL' if is_partial else 'UNPAID'),
+                        'payment_date': latest_p.payment_date if latest_p else None,
+                        'payment_method': latest_p.get_payment_method_display() if latest_p else None,
+                        'teacher_share': st_share,
+                        'contribution': st_contrib.quantize(Decimal('0.01')),
+                    })
+
+            st_count = len(group_students_info) if group_students_info else course.students.filter(is_active=True).count()
+            group_unpaid_count = max(0, st_count - group_paid_count)
+            group_rec_pct = round((group_paid_count / st_count * 100), 1) if st_count > 0 else 0.0
+
             courses_breakdown.append({
                 'course': course,
-                'student_count': course.students.filter(is_active=True).count(),
+                'student_count': st_count,
+                'monthly_fee': monthly_fee,
+                'paid_count': group_paid_count,
+                'unpaid_count': group_unpaid_count,
+                'recovery_pct': group_rec_pct,
+                'collected_revenue': g_act,
+                'students_info': group_students_info,
                 'gains_actual': g_act,
                 'gains_theoretical': g_theo,
                 'share_actual_gross': share_actual_gross.quantize(Decimal('0.01')),
@@ -633,6 +710,11 @@ def calculate_teacher_hours(teacher, start_date: date, end_date: date) -> Dict:
         total_share_actual_net = sum(c['share_actual'] for c in courses_breakdown)
         salary_taught = total_share_actual_net + substitution_earnings
         salary_theoretical = sum(c['share_theoretical'] for c in courses_breakdown)
+
+        total_active_students = sum(c.get('student_count', 0) for c in courses_breakdown)
+        total_paid_students = sum(c.get('paid_count', 0) for c in courses_breakdown)
+        total_unpaid_students = sum(c.get('unpaid_count', 0) for c in courses_breakdown)
+        global_recovery_rate = round((total_paid_students / total_active_students * 100), 1) if total_active_students > 0 else 0.0
         
         return {
             'scheduled_hours': total_scheduled_hours,
@@ -654,6 +736,11 @@ def calculate_teacher_hours(teacher, start_date: date, end_date: date) -> Dict:
             'months_covered': len(months),
             'own_sessions_count': own_sessions.count(),
             'substitute_sessions_count': substitute_sessions.count(),
+            'total_active_students': total_active_students,
+            'total_paid_students': total_paid_students,
+            'total_unpaid_students': total_unpaid_students,
+            'global_recovery_rate': global_recovery_rate,
+            'total_group_revenue': total_gains_actual,
         }
     elif teacher.payment_method == 'SESSION':
         total_scheduled_sessions = 0
